@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Mock Real Estate Page</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 40px;
+      background-color: #f3f4f6;
+      color: #111827;
+    }
+    .container {
+      max-width: 800px;
+      background: white;
+      padding: 30px;
+      border-radius: 12px;
+      box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
+      margin-bottom: 40px;
+    }
+    h2 {
+      border-bottom: 2px solid #e5e7eb;
+      padding-bottom: 10px;
+      color: #374151;
+    }
+    .property-info__feature-group, [data-testid="property-features"] {
+      display: flex;
+      gap: 15px;
+      background: #f9fafb;
+      padding: 10px 15px;
+      border-radius: 8px;
+      border: 1px solid #e5e7eb;
+      font-weight: bold;
+      width: fit-content;
+      margin: 15px 0;
+    }
+  </style>
+  <!-- Link extension content style for visual check -->
+  <link rel="stylesheet" href="../extension/content.css">
+</head>
+<body>
+
+  <h1>Extension Injection Sandbox</h1>
+  <p>This page simulates the DOM of realestate.com.au and domain.com.au for testing extension rendering.</p>
+
+  <!-- 1. Realestate.com.au Simulation -->
+  <div class="container" id="rea-container">
+    <h2>Simulated: realestate.com.au</h2>
+    <h1 class="property-info-address">2/1 Mayfield Drive, Mount Waverley VIC 3149</h1>
+    <div class="property-info__feature-group">
+      <span>🛏️ 4</span>
+      <span>🛁 2</span>
+      <span>🚗 2</span>
+    </div>
+  </div>
+
+  <!-- 2. Domain.com.au Simulation -->
+  <div class="container" id="domain-container">
+    <h2>Simulated: domain.com.au</h2>
+    <h1 data-testid="address-wrapper">1 James Ruse Court, Sydney NSW 2000</h1>
+    <div data-testid="property-features">
+      <span>🛏️ 3</span>
+      <span>🛁 2</span>
+      <span>🚗 1</span>
+    </div>
+  </div>
+
+  <!-- Inject the content script logic directly so we can preview the injection without installing the unpacked extension yet -->
+  <script>
+    // Mock the chrome extension storage object
+    window.chrome = {
+      storage: {
+        local: {
+          get: (keys, callback) => {
+            callback({
+              showLandSize: true,
+              showSchools: true,
+              proxyUrl: 'http://localhost:3000'
+            });
+          }
+        }
+      }
+    };
+  </script>
+  <script src="../extension/content.js"></script>
+
+</body>
+</html>

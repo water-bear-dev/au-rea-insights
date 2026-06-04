@@ -1,0 +1,27 @@
+{
+  "manifest_version": 3,
+  "name": "AU Real Estate Insights",
+  "version": "1.0.0",
+  "description": "Displays property land size and school catchment/ranking info on realestate.com.au and domain.com.au.",
+  "permissions": [
+    "storage"
+  ],
+  "host_permissions": [
+    "https://*.realestate.com.au/*",
+    "https://*.domain.com.au/*"
+  ],
+  "action": {
+    "default_popup": "popup.html"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://*.realestate.com.au/*",
+        "https://*.domain.com.au/*"
+      ],
+      "js": ["content.js"],
+      "css": ["content.css"],
+      "run_at": "document_end"
+    }
+  ]
+}

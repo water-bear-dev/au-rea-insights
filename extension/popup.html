@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>AU Real Estate Insights</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-dark: #0f172a;
+      --bg-card: #1e293b;
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+      --accent: #3b82f6;
+      --accent-hover: #2563eb;
+      --success: #10b981;
+      --border: #334155;
+    }
+
+    body {
+      width: 320px;
+      font-family: 'Outfit', sans-serif;
+      background-color: var(--bg-dark);
+      color: var(--text-main);
+      margin: 0;
+      padding: 16px;
+      box-sizing: border-box;
+    }
+
+    .header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+
+    .logo-container {
+      width: 32px;
+      height: 32px;
+      background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 18px;
+      color: #fff;
+      box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+    }
+
+    .title {
+      font-size: 16px;
+      font-weight: 600;
+      margin: 0;
+      background: linear-gradient(to right, #f8fafc, #94a3b8);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .status-badge {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      background-color: rgba(16, 185, 129, 0.1);
+      border: 1px solid rgba(16, 185, 129, 0.2);
+      color: var(--success);
+      padding: 4px 10px;
+      border-radius: 100px;
+      font-size: 11px;
+      font-weight: 500;
+      margin-left: auto;
+    }
+
+    .status-dot {
+      width: 6px;
+      height: 6px;
+      background-color: var(--success);
+      border-radius: 50%;
+      box-shadow: 0 0 8px var(--success);
+    }
+
+    .card {
+      background-color: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 16px;
+    }
+
+    .card-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-top: 0;
+      margin-bottom: 12px;
+    }
+
+    .setting-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+
+    .setting-row:last-child {
+      margin-bottom: 0;
+    }
+
+    .setting-label {
+      font-size: 14px;
+      font-weight: 500;
+    }
+
+    .setting-desc {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-top: 2px;
+    }
+
+    /* Switch styling */
+    .switch {
+      position: relative;
+      display: inline-block;
+      width: 40px;
+      height: 22px;
+    }
+
+    .switch input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+
+    .slider {
+      position: absolute;
+      cursor: pointer;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-color: #475569;
+      transition: .3s;
+      border-radius: 34px;
+    }
+
+    .slider:before {
+      position: absolute;
+      content: "";
+      height: 16px;
+      width: 16px;
+      left: 3px;
+      bottom: 3px;
+      background-color: white;
+      transition: .3s;
+      border-radius: 50%;
+    }
+
+    input:checked + .slider {
+      background-color: var(--accent);
+    }
+
+    input:checked + .slider:before {
+      transform: translateX(18px);
+    }
+
+    .footer {
+      text-align: center;
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-top: 16px;
+    }
+
+    .footer a {
+      color: var(--accent);
+      text-decoration: none;
+    }
+    .api-key-input {
+      width: 100%;
+      padding: 8px 12px;
+      background-color: var(--bg-dark);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text-main);
+      font-family: inherit;
+      font-size: 13px;
+      box-sizing: border-box;
+      margin-top: 6px;
+    }
+    .api-key-input:focus {
+      outline: none;
+      border-color: var(--accent);
+    }
+    .save-status {
+      font-size: 11px;
+      color: var(--success);
+      margin-top: 4px;
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="logo-container">R</div>
+    <h1 class="title">AU Insights</h1>
+    <div class="status-badge">
+      <div class="status-dot"></div>
+      Active
+    </div>
+  </div>
+
+  <div class="card">
+    <h2 class="card-title">Extension Settings</h2>
+    
+    <div class="setting-row">
+      <div>
+        <div class="setting-label">Show Land Size</div>
+        <div class="setting-desc">Inject land size metrics next to bed/bath</div>
+      </div>
+      <label class="switch">
+        <input type="checkbox" id="toggle-land-size" checked>
+        <span class="slider"></span>
+      </label>
+    </div>
+
+    <div class="setting-row" style="margin-top: 16px;">
+      <div>
+        <div class="setting-label">Show Catchment Schools</div>
+        <div class="setting-desc">Display nearby schools and ratings</div>
+      </div>
+      <label class="switch">
+        <input type="checkbox" id="toggle-schools" checked>
+        <span class="slider"></span>
+      </label>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2 class="card-title">Gemini API Configuration</h2>
+    <div>
+      <div class="setting-label">API Key</div>
+      <div class="setting-desc">Past your Gemini API key below:</div>
+      <input type="password" id="gemini-api-key" class="api-key-input" placeholder="AIzaSy...">
+      <div id="save-status" class="save-status">Saved successfully!</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2 class="card-title">Developer Controls</h2>
+    <button id="clear-cache" style="width: 100%; padding: 8px 12px; background-color: #ef4444; border: none; border-radius: 6px; color: #fff; font-family: inherit; font-weight: 600; font-size: 12px; cursor: pointer; transition: background-color 0.2s;">Clear Storage Cache</button>
+    <div id="clear-status" style="font-size: 11px; color: #fca5a5; margin-top: 6px; display: none; text-align: center;">Cache cleared successfully!</div>
+  </div>
+
+  <div class="footer">
+    AU Real Estate Insights v1.1.0 • <a href="https://aistudio.google.com/" target="_blank">Get Gemini Key</a>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
