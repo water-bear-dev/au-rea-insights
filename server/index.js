@@ -98,6 +98,32 @@ function getPropertyProfileUrl(state, suburb, postcode, street) {
   return `https://www.realestate.com.au/property/${unitPrefix}${streetSlug}-${suburbLower}-${stateLower}-${postcode}/`;
 }
 
+function getPropertyComAuProfileUrl(state, suburb, postcode, street) {
+  const stateLower = String(state || '').toLowerCase();
+  const suburbSlug = String(suburb || '').toLowerCase().replace(/[^a-z0-9\s-]/g, '').trim().replace(/\s+/g, '-');
+  const streetSlug = getStreetSlug(String(street || ''));
+  const postcodeSafe = String(postcode || '').trim();
+  return `https://www.property.com.au/${stateLower}/${suburbSlug}-${postcodeSafe}/${streetSlug}/`;
+}
+
+function getAllhomesPropertyUrl(state, suburb, postcode, street) {
+  const streetSlug = String(street || '')
+    .toLowerCase()
+    .trim()
+    .replace(/\//g, '-')
+    .replace(/[^a-z0-9\s-]/g, '')
+    .replace(/\s+/g, '-');
+  const suburbSlug = String(suburb || '')
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9\s-]/g, '')
+    .replace(/\s+/g, '-');
+  const stateSlug = String(state || '').toLowerCase().trim();
+  const postcodeSafe = String(postcode || '').trim();
+
+  return `https://www.allhomes.com.au/${streetSlug}-${suburbSlug}-${stateSlug}-${postcodeSafe}`;
+}
+
 function parseAddressFromRealEstatePropertyUrl(inputUrl) {
   if (!inputUrl) return null;
 
@@ -151,10 +177,17 @@ function parseAddressFromRealEstatePropertyUrl(inputUrl) {
 
 function normalizeLandSize(rawValue) {
   if (!rawValue || typeof rawValue !== 'string') return null;
-  const cleaned = rawValue.replace(/,/g, '').trim();
+  const cleaned = rawValue
+    .replace(/<\/?[^>]+>/g, ' ')
+    .replace(/\u00a0/g, ' ')
+    .replace(/,/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
   const match = cleaned.match(/^(\d+(?:\.\d+)?)\s*(m²|sqm|m2|square\s*meters|sq\s*meters|sq\s*m)$/i);
-  if (!match) return null;
-  const value = Math.round(parseFloat(match[1]));
+  const approxMatch = cleaned.match(/^(\d+(?:\.\d+)?)\s*(m²|sqm|m2|square\s*meters|sq\s*meters|sq\s*m)\s*(?:approx(?:\.|imately)?|about|circa)?$/i);
+  const resolvedMatch = match || approxMatch;
+  if (!resolvedMatch) return null;
+  const value = Math.round(parseFloat(resolvedMatch[1]));
   if (!Number.isFinite(value) || value <= 0) return null;
   return `${value}m²`;
 }
@@ -163,37 +196,94 @@ function createLandSizeResolution(status, value, source, reason) {
   return { status, value, source, reason };
 }
 
-async function fetchLandSizeFromRealEstateProfile(state, suburb, postcode, street) {
+function createLandSizeAttemptLog(step, resolution, waitBeforeMs = 0) {
+  return {
+    step,
+    source: resolution.source || 'unknown',
+    status: resolution.status || 'unverified',
+    reason: resolution.reason || 'unknown',
+    landSize: resolution.value || null,
+    waitBeforeMs
+  };
+}
+
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function isRetriableGeminiStatus(status) {
+  return status === 429 || status === 503;
+}
+
+async function geminiRequestWithRetry(url, body, axiosInstance, options = {}) {
+  const maxAttempts = Number.isFinite(options.maxAttempts) ? Math.max(1, options.maxAttempts) : 3;
+  const baseDelayMs = Number.isFinite(options.baseDelayMs) ? Math.max(0, options.baseDelayMs) : 1000;
+  let lastError;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      return await axiosInstance.post(url, body, { timeout: 6000 });
+    } catch (e) {
+      const status = e && e.response ? e.response.status : null;
+      const canRetry = isRetriableGeminiStatus(status) && attempt < maxAttempts;
+      if (!canRetry) {
+        throw e;
+      }
+
+      // Exponential backoff + light jitter to reduce synchronized retries.
+      const jitterMs = Math.floor(Math.random() * 250);
+      const delayMs = (baseDelayMs * (2 ** (attempt - 1))) + jitterMs;
+      console.warn(`[Proxy] Gemini throttled (status=${status}). Retry ${attempt + 1}/${maxAttempts} in ${delayMs}ms.`);
+      await sleep(delayMs);
+      lastError = e;
+    }
+  }
+
+  throw lastError || new Error('Gemini request failed after retries');
+}
+
+function extractLandSizeFromHtml(htmlText) {
+  if (!htmlText || typeof htmlText !== 'string') return null;
+  const flattenedHtml = htmlText.replace(/<\/?[^>]+>/g, ' ');
+
+  // 1. Common free-text patterns
+  const textRegex = /(?:land\s+size|land\s+area|block\s+size)(?:\s+of)?[\s:]*([\d,]+(?:\.\d+)?\s*(?:m²|m2|sqm|sq\.?\s*m|square\s+meters?|sq\s*meters?))/i;
+  const textMatch = flattenedHtml.match(textRegex);
+  if (textMatch) {
+    return normalizeLandSize(textMatch[1]);
+  }
+
+  // 2. JSON-ish numeric field patterns
+  const jsonRegex = /"landSize"\s*:\s*\{\s*"value"\s*:\s*([\d.]+)/i;
+  const jsonMatch = htmlText.match(jsonRegex);
+  if (jsonMatch) {
+    return normalizeLandSize(`${Math.round(parseFloat(jsonMatch[1]))}m²`);
+  }
+
+  // 3. Alternate key patterns that appear on some property pages
+  const altRegex = /"(?:land_area|landArea|blockSize)"\s*:\s*"?(?:([\d,]+(?:\.\d+)?)\s*(?:m²|m2|sqm))"?/i;
+  const altMatch = htmlText.match(altRegex);
+  if (altMatch) {
+    return normalizeLandSize(`${altMatch[1]}m²`);
+  }
+
+  return null;
+}
+
+async function fetchLandSizeFromRealEstateProfile(state, suburb, postcode, street, axiosInstance = axios) {
   const profileUrl = getPropertyProfileUrl(state, suburb, postcode, street);
   try {
     console.log(`[Proxy] Fetching official profile from realestate.com.au: ${profileUrl}`);
     const headers = {
       'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
     };
-    const response = await axios.get(profileUrl, { headers, timeout: 5000 });
+    const response = await axiosInstance.get(profileUrl, { headers, timeout: 5000 });
     const htmlText = response.data;
-    
-    // 1. Try text pattern
-    const textRegex = /(?:land\s+size|land\s+area|block\s+size)(?:\s+of)?[\s:]*([\d,]+(?:\.\d+)?\s*(?:m²|m2|sqm|sq\.?\s*m|square\s+meters?|sq\s*meters?))/i;
-    const textMatch = htmlText.match(textRegex);
-    if (textMatch) {
-      const normalized = normalizeLandSize(textMatch[1]);
-      if (normalized) {
-        console.log(`[Proxy] Resolved verified land size from official profile text: ${normalized}`);
-        return createLandSizeResolution('verified', normalized, 'realestate_profile_text', 'structured_profile_match');
-      }
-    }
-    
-    // 2. Try JSON pattern
-    const jsonRegex = /"landSize"\s*:\s*\{\s*"value"\s*:\s*([\d.]+)/i;
-    const jsonMatch = htmlText.match(jsonRegex);
-    if (jsonMatch) {
-      const jsonValue = `${Math.round(parseFloat(jsonMatch[1]))}m²`;
-      const normalized = normalizeLandSize(jsonValue);
-      if (normalized) {
-        console.log(`[Proxy] Resolved verified land size from official profile JSON: ${normalized}`);
-        return createLandSizeResolution('verified', normalized, 'realestate_profile_json', 'structured_profile_match');
-      }
+
+    const normalized = extractLandSizeFromHtml(htmlText);
+    if (normalized) {
+      console.log(`[Proxy] Resolved verified land size from realestate.com.au: ${normalized}`);
+      return createLandSizeResolution('verified', normalized, 'realestate_profile_text', 'structured_profile_match');
     }
   } catch (e) {
     console.warn(`[Proxy] Failed to fetch official realestate.com.au profile page: ${e.message}`);
@@ -202,8 +292,48 @@ async function fetchLandSizeFromRealEstateProfile(state, suburb, postcode, stree
   return createLandSizeResolution('unverified', null, 'realestate_profile_unavailable', 'no_structured_land_size');
 }
 
+async function fetchLandSizeFromPropertyComAu(state, suburb, postcode, street, axiosInstance = axios) {
+  const profileUrl = getPropertyComAuProfileUrl(state, suburb, postcode, street);
+  try {
+    console.log(`[Proxy] Fetching property.com.au page: ${profileUrl}`);
+    const headers = {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+    };
+    const response = await axiosInstance.get(profileUrl, { headers, timeout: 5000 });
+    const normalized = extractLandSizeFromHtml(response.data);
+    if (normalized) {
+      console.log(`[Proxy] Resolved verified land size from property.com.au: ${normalized}`);
+      return createLandSizeResolution('verified', normalized, 'property_com_au_text', 'structured_profile_match');
+    }
+  } catch (e) {
+    console.warn(`[Proxy] Failed to fetch property.com.au page: ${e.message}`);
+    return createLandSizeResolution('unverified', null, 'property_com_au_error', e.message);
+  }
+  return createLandSizeResolution('unverified', null, 'property_com_au_unavailable', 'no_structured_land_size');
+}
+
+async function fetchLandSizeFromAllhomes(state, suburb, postcode, street, axiosInstance = axios) {
+  const propertyUrl = getAllhomesPropertyUrl(state, suburb, postcode, street);
+  try {
+    console.log(`[Proxy] Fetching allhomes.com.au page: ${propertyUrl}`);
+    const headers = {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+    };
+    const response = await axiosInstance.get(propertyUrl, { headers, timeout: 5000 });
+    const normalized = extractLandSizeFromHtml(response.data);
+    if (normalized) {
+      console.log(`[Proxy] Resolved verified land size from allhomes.com.au: ${normalized}`);
+      return createLandSizeResolution('verified', normalized, 'allhomes_text', 'structured_profile_match');
+    }
+  } catch (e) {
+    console.warn(`[Proxy] Failed to fetch allhomes.com.au page: ${e.message}`);
+    return createLandSizeResolution('unverified', null, 'allhomes_error', e.message);
+  }
+  return createLandSizeResolution('unverified', null, 'allhomes_unavailable', 'no_structured_land_size');
+}
+
 // Fetch land size using Gemini API
-async function fetchLandSizeFromGemini(addressStr) {
+async function fetchLandSizeFromGemini(addressStr, axiosInstance = axios) {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
     console.log('[Proxy] GEMINI_API_KEY is not set. Skipping server-side Gemini request.');
@@ -212,15 +342,19 @@ async function fetchLandSizeFromGemini(addressStr) {
   
   try {
     console.log(`[Proxy] Fetching land size from Gemini API for: ${addressStr}`);
-    const promptText = `Analyze the following Australian property address: "${addressStr}". Find the official land/block size from property records. Respond only with the number + m² (e.g. 156m²), or "Not available" if completely unknown. Do not guess or estimate. Do not include any other words.`;
+    const promptText = `Address: "${addressStr}". Return only land size as "<number>m²" or "Not available". No extra text.`;
     
-    const response = await axios.post(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
-      contents: [{
-        parts: [{
-          text: promptText
+    const response = await geminiRequestWithRetry(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+      {
+        contents: [{
+          parts: [{
+            text: promptText
+          }]
         }]
-      }]
-    }, { timeout: 6000 });
+      },
+      axiosInstance
+    );
     
     if (response.data && response.data.candidates && response.data.candidates[0].content.parts[0].text) {
       const text = response.data.candidates[0].content.parts[0].text.trim();
@@ -237,29 +371,92 @@ async function fetchLandSizeFromGemini(addressStr) {
   return createLandSizeResolution('unverified', null, 'gemini_no_value', 'not_available_or_unparseable');
 }
 
-async function resolveLandSizeStrict(address) {
+async function resolveLandSizeStrict(address, options = {}) {
+  const axiosInstance = options.axiosInstance || axios;
+  const useGemini = options.useGemini !== false;
+  const waitMs = Number.isFinite(options.waitMs) ? Math.max(0, options.waitMs) : 5000;
+  const sleepFn = options.sleepFn || sleep;
+  const attempts = [];
+
   const profileResolution = await fetchLandSizeFromRealEstateProfile(
     address.state,
     address.suburb,
     address.postcode,
-    address.street
+    address.street,
+    axiosInstance
   );
+  const profileAttempt = createLandSizeAttemptLog('realestate.com.au', profileResolution, 0);
+  attempts.push(profileAttempt);
+  console.log('[Proxy][LandSizeAttempt]', JSON.stringify(profileAttempt));
 
   if (profileResolution.status === 'verified' && profileResolution.value) {
-    return profileResolution;
+    return { ...profileResolution, attempts };
+  }
+
+  if (waitMs > 0) {
+    console.log(`[Proxy] Waiting ${waitMs}ms before property.com.au fallback...`);
+    await sleepFn(waitMs);
+  }
+
+  const propertyResolution = await fetchLandSizeFromPropertyComAu(
+    address.state,
+    address.suburb,
+    address.postcode,
+    address.street,
+    axiosInstance
+  );
+  const propertyAttempt = createLandSizeAttemptLog('property.com.au', propertyResolution, waitMs);
+  attempts.push(propertyAttempt);
+  console.log('[Proxy][LandSizeAttempt]', JSON.stringify(propertyAttempt));
+  if (propertyResolution.status === 'verified' && propertyResolution.value) {
+    return { ...propertyResolution, attempts };
+  }
+
+  if (waitMs > 0) {
+    console.log(`[Proxy] Waiting ${waitMs}ms before allhomes.com.au fallback...`);
+    await sleepFn(waitMs);
+  }
+
+  const allhomesResolution = await fetchLandSizeFromAllhomes(
+    address.state,
+    address.suburb,
+    address.postcode,
+    address.street,
+    axiosInstance
+  );
+  const allhomesAttempt = createLandSizeAttemptLog('allhomes.com.au', allhomesResolution, waitMs);
+  attempts.push(allhomesAttempt);
+  console.log('[Proxy][LandSizeAttempt]', JSON.stringify(allhomesAttempt));
+  if (allhomesResolution.status === 'verified' && allhomesResolution.value) {
+    return { ...allhomesResolution, attempts };
   }
 
   // Gemini is retained only as an informational signal; it cannot produce a verified numeric value.
-  const geminiResolution = await fetchLandSizeFromGemini(
-    `${address.street}, ${address.suburb} ${address.state} ${address.postcode}`
-  );
+  const geminiResolution = useGemini
+    ? await (async () => {
+      if (waitMs > 0) {
+        console.log(`[Proxy] Waiting ${waitMs}ms before Gemini fallback...`);
+        await sleepFn(waitMs);
+      }
+      return fetchLandSizeFromGemini(
+        `${address.street}, ${address.suburb} ${address.state} ${address.postcode}`,
+        axiosInstance
+      );
+    })()
+    : createLandSizeResolution('unverified', null, 'gemini_skipped', 'disabled_by_callsite');
+  const geminiAttempt = createLandSizeAttemptLog('gemini', geminiResolution, useGemini ? waitMs : 0);
+  attempts.push(geminiAttempt);
+  console.log('[Proxy][LandSizeAttempt]', JSON.stringify(geminiAttempt));
 
-  return createLandSizeResolution(
+  return {
+    ...createLandSizeResolution(
     'unverified',
     null,
-    profileResolution.source || geminiResolution.source,
-    profileResolution.reason || geminiResolution.reason || 'verification_failed'
-  );
+    allhomesResolution.source || propertyResolution.source || profileResolution.source || geminiResolution.source,
+    allhomesResolution.reason || propertyResolution.reason || profileResolution.reason || geminiResolution.reason || 'verification_failed'
+    ),
+    attempts
+  };
 }
 
 // Resolve schools for catchment
@@ -381,10 +578,31 @@ app.get('/api/insights', async (req, res) => {
     address: resolvedAddress,
     landSize: landSizeResolution.status === 'verified' && landSizeResolution.value ? landSizeResolution.value : 'Not available',
     landSizeMeta: landSizeResolution,
+    landSizeLogs: Array.isArray(landSizeResolution.attempts) ? landSizeResolution.attempts : [],
     schools: schools
   });
 });
 
-app.listen(PORT, () => {
-  console.log(`[Proxy Server] Running on http://localhost:${PORT}`);
-});
+if (require.main === module) {
+  app.listen(PORT, () => {
+    console.log(`[Proxy Server] Running on http://localhost:${PORT}`);
+  });
+}
+
+module.exports = {
+  app,
+  normalizeLandSize,
+  getStreetSlug,
+  getPropertyProfileUrl,
+  getPropertyComAuProfileUrl,
+  getAllhomesPropertyUrl,
+  extractLandSizeFromHtml,
+  createLandSizeAttemptLog,
+  fetchLandSizeFromRealEstateProfile,
+  fetchLandSizeFromPropertyComAu,
+  fetchLandSizeFromAllhomes,
+  fetchLandSizeFromGemini,
+  geminiRequestWithRetry,
+  sleep,
+  resolveLandSizeStrict
+};

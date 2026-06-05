@@ -151,3 +151,76 @@
 @keyframes au-spin {
   to { transform: rotate(360deg); }
 }
+
+.au-insights-loading-shell {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  font-family: 'Outfit', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+.au-insights-loading-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #334155;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.au-insights-loading-text {
+  display: inline-flex;
+  align-items: baseline;
+}
+
+.au-insights-loading-dots::after {
+  content: '';
+  display: inline-block;
+  width: 14px;
+  text-align: left;
+  animation: au-loading-dots 1.2s steps(4, end) infinite;
+}
+
+@keyframes au-loading-dots {
+  0% { content: ''; }
+  25% { content: '.'; }
+  50% { content: '..'; }
+  75% { content: '...'; }
+  100% { content: ''; }
+}
+
+.au-insights-loading-bar {
+  width: 100%;
+  height: 6px;
+  border-radius: 999px;
+  background: #e2e8f0;
+  overflow: hidden;
+  position: relative;
+}
+
+.au-insights-loading-bar-fill {
+  width: 40%;
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #2563eb, #60a5fa);
+  position: absolute;
+  left: -40%;
+  animation: au-loading-bar 1.4s ease-in-out infinite;
+}
+
+@keyframes au-loading-bar {
+  0% { left: -40%; }
+  100% { left: 100%; }
+}
+
+.au-insights-loading-subtext {
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.au-insights-loading-elapsed {
+  color: #475569;
+  font-size: 11px;
+  font-weight: 600;
+}

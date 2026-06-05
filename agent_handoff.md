@@ -1,110 +1,69 @@
 # Agent Handoff: AU Real Estate Insights
 
-This handoff reflects the current strict land-size accuracy policy and latest implementation state.
+This handoff summarizes the latest production-oriented state after architecture and parser hardening.
 
----
+## 1) Current Architecture (Important)
 
-## 1. Project Overview
+- Extension (`extension/content.js`) is now proxy-only for data retrieval.
+- Local backend (`server/index.js`) handles land size + schools + Gemini fallback logic.
+- Gemini key lives only in `server/.env` (`GEMINI_API_KEY`).
+- Popup key input is no longer required for insights retrieval flow.
 
-**AU Real Estate Insights** is a Chrome extension for **realestate.com.au** and **domain.com.au** that injects:
-1. **Land size insight** (strict verified-only display policy).
-2. **School catchment/ranking insight** (BetterEducation-based presentation).
+## 2) Land Size Resolution Policy
 
-### Architecture
-- **Extension frontend (`/extension`)**
-  - `content.js`: address extraction, data fetch flow, UI injection, caching.
-  - `content.css`: styling for injected "Property Insights" card.
-  - `popup.html` / `popup.js`: toggles, API key input, cache clear control.
-- **Local proxy (`/server`)**
-  - `index.js`: API endpoint `/api/insights`, school resolution, strict land-size resolver with metadata.
+- Display policy remains strict: numeric land size is shown only for `verified` results.
+- Fallback chain in order:
+  1. `realestate.com.au`
+  2. `property.com.au`
+  3. `allhomes.com.au`
+  4. Gemini as non-authoritative signal only
+- There is a 5-second wait before each fallback source attempt.
 
----
+## 3) Logging and Debug Signals
 
-## 2. What Was Changed (Latest)
+- Proxy returns:
+  - `landSizeMeta`
+  - `landSizeLogs` (step-by-step source attempts)
+- Proxy logs each step to terminal:
+  - `[Proxy][LandSizeAttempt] {...}`
+- Extension console prints grouped attempt logs:
+  - `[AU Insights] Land size resolution attempts`
 
-### A. Strict Verified-Only Land Size Policy
-- Implemented global rule: numeric land size is shown **only** when source is verified from authoritative profile extraction.
-- If verification fails, response/display is `Not available`.
-- Added land-size provenance metadata in proxy responses:
-  - `landSizeMeta: { status, value, source, reason }`
+## 4) Recent Reliability Improvements
 
-### B. Server Resolver Hardening (`server/index.js`)
-- Added normalization and strict resolver helpers:
-  - `normalizeLandSize(...)`
-  - `createLandSizeResolution(...)`
-  - `resolveLandSizeStrict(...)`
-- Kept verified extraction path from realestate profile page (text/JSON structured matches).
-- Removed weak/non-authoritative fallbacks:
-  - Removed broad `property.com.au` scraping fallback for land size.
-  - Removed hardcoded demo land-size overrides (including Cheltenham `156m²` override).
-- Gemini is retained but treated as **unverified signal only** (never directly authoritative for numeric land size).
+- Removed browser-direct Gemini API path to reduce exposed-key and quota issues.
+- Added dedupe + debounce in extension request flow to reduce duplicate calls.
+- Added Gemini retry with exponential backoff + jitter for `429`/`503`.
+- Shortened Gemini prompt payload to reduce token pressure.
+- Switched Allhomes fallback URL to direct property slug form:
+  - `https://www.allhomes.com.au/<street>-<suburb>-<state>-<postcode>`
+- Hardened land-size parser to handle:
+  - `approx`, `approx.`, `approximately`
+  - HTML tag-split values around number/unit
+  - examples like `Block size: 188 m² approx.`
 
-### C. Extension Strict Display + Cache Versioning (`extension/content.js`)
-- Added cache versioning:
-  - New prefix: `insights_cache_v2_`
-  - Legacy prefix: `insights_cache_` is cleaned per-address on read
-- Enforced strict display behavior:
-  - Only display numeric land size if status is verified.
-  - Otherwise display `Not available`.
-- In Gemini-key path, extension no longer trusts Gemini `landSize` directly:
-  - It performs authoritative profile extraction before displaying numeric size.
-- Extension now includes page URL when calling proxy fallback:
-  - `url=<window.location.href>`
+## 5) Validation Snapshot
 
-### D. URL + Address Guided Retrieval
-- Added URL parser in proxy:
-  - `parseAddressFromRealEstatePropertyUrl(...)`
-- `/api/insights` now accepts `url` and can reconstruct address context from realestate property URL format when needed.
-- This improves resilience where formatted address parts are inconsistent.
+- Server tests currently pass (`npm --prefix server test`).
+- Coverage includes:
+  - fallback ordering
+  - fallback delay behavior
+  - Allhomes slug URL generation
+  - Gemini retry logic
+  - `approx` and tag-split parser cases
 
-### E. Regex Improvement for Real Listings
-- Updated text extraction regex to handle phrasing like:
-  - `land size of 156 m²`
-  - `land area: 156 sqm`
-  - `block size 156m2`
-- Applied in both extension and server extraction logic.
+## 6) Operational Notes for Next Agent
 
-### F. Popup Cache Clearing (`extension/popup.js`)
-- Clear cache now removes both old and new cache key prefixes:
-  - `insights_cache_`
-  - `insights_cache_v2_`
+1. Ensure server is running before testing extension:
+   - `npm --prefix server run dev`
+2. If results look stale, clear extension cache from popup.
+3. For parser misses on live pages:
+   - capture HTML snippet around the visible block/land size text
+   - extend targeted regex/selector support only (avoid broad generic `m²` scraping)
+4. Keep strict verified-only display behavior intact.
 
----
+## 7) Guardrails
 
-## 3. Current Known Behavior
-
-- Correctness-first behavior is active.
-- Some properties may now show `Not available` where a heuristic/model value was previously shown.
-- This is intentional to avoid incorrect parent-lot values (e.g., townhouse/subdivision mismatch like `703m²` vs `156m²`).
-
----
-
-## 4. Verification Done
-
-- Syntax checks passed:
-  - `node --check server/index.js`
-  - `node --check extension/content.js`
-  - `node --check extension/popup.js`
-- Lint diagnostics: no new errors on edited files.
-
----
-
-## 5. Immediate Next Steps for Another Agent
-
-1. Reload extension in `chrome://extensions`.
-2. Click **Clear Storage Cache** in popup (clears both legacy and v2 keys).
-3. Re-test `24 Abbington Avenue, Cheltenham VIC 3192` on live listing page.
-4. Confirm the stricter flow:
-   - If authoritative extraction succeeds, show numeric value.
-   - If not, show `Not available` (no Gemini numeric fallback).
-5. If still `Not available` while page text clearly includes land size:
-   - Inspect the exact HTML snippet containing land size phrase.
-   - Extend strict regex/selector list without reintroducing broad heuristic matches.
-
----
-
-## 6. Important Guardrails
-
-- Do not reintroduce generic page-wide `m²` scraping.
-- Do not reintroduce hardcoded suburb/address numeric overrides.
-- Keep model outputs non-authoritative for numeric land size unless independently verified.
+- Do not move API key usage back into extension/browser context.
+- Do not trust model-generated numeric land size as authoritative display value.
+- Do not add hardcoded address overrides.
