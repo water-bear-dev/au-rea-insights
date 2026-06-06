@@ -7,12 +7,15 @@ All notable changes to this project are documented in this file.
 ## [0.2.0] - 2026-06-05
 
 ### Added
+- Added dynamic, lazy-loading boundary cache (`boundaryCache`) to support resolving school catchments in any state or territory.
+- Extended the Better Education ratings scraper (`update_schools_db.js`) to dynamically target all states and territories (`vic`, `nsw`, `qld`, `wa`, `sa`, `tas`, `act`, `nt`).
+- Added spatial catchments for secondary colleges (using simplified `vic_secondary.json` boundaries).
 - Added offline Point-in-Polygon geospatial catchment resolution using simplified GeoJSON boundary files (`server/data/school-zones/vic_primary.json`).
 - Added Haversine geodetic distance calculation for zoned schools based on coordinates.
 - Added address geocoding via OpenStreetMap Nominatim on the proxy backend.
 - Added strict land-size resolution metadata (`landSizeMeta`) and per-attempt logs (`landSizeLogs`) from proxy responses.
 - Added server test coverage for:
-  - point-in-polygon lookup, geodetic distance calculation, and spatial school mapping
+  - point-in-polygon lookup, geodetic distance calculation, and spatial school mapping for VIC and NSW
   - fallback ordering
   - 5-second fallback delay behavior
   - Allhomes direct slug URL building

@@ -3,7 +3,8 @@
 Chrome extension + local proxy server that enriches listings on `realestate.com.au` and `domain.com.au` with:
 
 - verified land size (strict source policy)
-- local school catchment/ranking data
+- local primary and secondary school catchment zones resolved via geospatial boundaries
+- official Better Education school rating and ranking metadata
 
 ## Current Architecture
 
@@ -24,6 +25,9 @@ This avoids exposing keys in the browser and reduces direct API throttling issue
   3. `allhomes.com.au` (direct property slug URL)
   4. Gemini signal only (non-authoritative for final numeric display)
 - 5-second wait is applied before each fallback step
+- School catchments (both Primary and Secondary) are matched using geospatial coordinates against local boundary polygons (ray-casting Point-in-Polygon).
+- Addresses are geocoded using OpenStreetMap Nominatim.
+- Zoned school distance is calculated using the geodetic Haversine formula.
 - Server returns `landSizeLogs` with per-source attempt details
 - Extension prints attempt logs in browser console for debugging
 - Request dedupe/debounce reduces duplicate calls on SPA navigation
@@ -39,6 +43,13 @@ au-rea-insights/
 │   ├── popup.html
 │   └── popup.js
 ├── server/
+│   ├── data/
+│   │   └── school-zones/
+│   │       ├── vic_primary.json
+│   │       ├── vic_secondary.json
+│   │       └── nsw_primary.json
+│   ├── scripts/
+│   │   └── update_schools_db.js
 │   ├── index.js
 │   ├── land-size.test.js
 │   ├── schools_db.json
@@ -74,7 +85,15 @@ npm --prefix server install
 npm --prefix server run dev
 ```
 
-### 4) Browse supported listing pages
+### 4) Update School Database (Optional)
+
+To scrape the latest school overall ratings and rankings from Better Education:
+
+```bash
+node server/scripts/update_schools_db.js
+```
+
+### 5) Browse supported listing pages
 
 Open a property page on `realestate.com.au` or `domain.com.au`.
 The extension injects the Property Insights card once the proxy responds.

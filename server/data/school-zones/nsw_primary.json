@@ -1,0 +1,24 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "schoolName": "Matthew Pearce Public School",
+        "state": "NSW"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [150.900, -33.800],
+            [151.100, -33.800],
+            [151.100, -33.600],
+            [150.900, -33.600],
+            [150.900, -33.800]
+          ]
+        ]
+      }
+    }
+  ]
+}

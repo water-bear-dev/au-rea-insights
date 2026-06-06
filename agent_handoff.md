@@ -55,7 +55,8 @@ This handoff summarizes the latest production-oriented state after architecture 
 
 ## 6) Geospatial School Catchments
 
-- Zoned catchments are resolved offline by comparing property coordinates to simplified GeoJSON boundary files loaded on startup (located in `server/data/school-zones/`).
+- Zoned catchments are resolved offline for both primary and secondary schools by comparing property coordinates to simplified GeoJSON boundary files (located in `server/data/school-zones/`).
+- Boundary files are loaded dynamically on-demand and cached in memory using `getBoundaryGeoJson(state, schoolType)` to support catchments in any Australian state or territory.
 - Listing addresses are geocoded using OpenStreetMap Nominatim with a custom User-Agent to avoid API blockades.
 - Point-in-polygon queries use an offline ray-casting algorithm.
 - Distance calculations use the Haversine formula for exact distance measurements in kilometers instead of random approximations.

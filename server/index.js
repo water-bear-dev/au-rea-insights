@@ -20,20 +20,28 @@ try {
   console.error('Failed to load schools database:', e);
 }
 
-// Load school zones GeoJSON boundary files
-const schoolZonesPrimaryPath = path.join(__dirname, 'data', 'school-zones', 'vic_primary.json');
-const schoolZonesSecondaryPath = path.join(__dirname, 'data', 'school-zones', 'vic_secondary.json');
-let schoolZonesPrimaryGeoJson = { type: 'FeatureCollection', features: [] };
-let schoolZonesSecondaryGeoJson = { type: 'FeatureCollection', features: [] };
-try {
-  if (fs.existsSync(schoolZonesPrimaryPath)) {
-    schoolZonesPrimaryGeoJson = JSON.parse(fs.readFileSync(schoolZonesPrimaryPath, 'utf8'));
+// In-memory cache for dynamically loaded school zone boundary files
+const boundaryCache = {};
+
+function getBoundaryGeoJson(state, schoolType) {
+  const stateCode = String(state || '').toUpperCase().trim();
+  const typeCode = String(schoolType || '').toLowerCase().trim();
+  const key = `${stateCode}_${typeCode}`;
+  
+  if (boundaryCache[key]) {
+    return boundaryCache[key];
   }
-  if (fs.existsSync(schoolZonesSecondaryPath)) {
-    schoolZonesSecondaryGeoJson = JSON.parse(fs.readFileSync(schoolZonesSecondaryPath, 'utf8'));
+  
+  const filePath = path.join(__dirname, 'data', 'school-zones', `${stateCode.toLowerCase()}_${typeCode}.json`);
+  try {
+    if (fs.existsSync(filePath)) {
+      boundaryCache[key] = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+      return boundaryCache[key];
+    }
+  } catch (e) {
+    console.error(`Failed to load school zones boundary file for ${key}:`, e);
   }
-} catch (e) {
-  console.error('Failed to load school zones boundary files:', e);
+  return { type: 'FeatureCollection', features: [] };
 }
 
 // Geocode address using Nominatim (with custom User-Agent)
@@ -74,11 +82,11 @@ function isPointInPolygon(point, polygon) {
 
 // Spatial lookup to find zoned school name
 function findSchoolBySpatialLookup(lat, lng, state, schoolType) {
-  const geojson = schoolType === 'Secondary' ? schoolZonesSecondaryGeoJson : schoolZonesPrimaryGeoJson;
+  const geojson = getBoundaryGeoJson(state, schoolType);
   if (!geojson || !geojson.features) return null;
   const point = [lng, lat];
   for (const feature of geojson.features) {
-    if (feature.properties && feature.properties.state === state) {
+    if (feature.properties && feature.properties.state.toUpperCase() === String(state).toUpperCase()) {
       const coords = feature.geometry.coordinates;
       if (coords && coords[0]) {
         const exteriorRing = coords[0];
@@ -756,6 +764,7 @@ module.exports = {
   resolveLandSizeStrict,
   geocodeAddress,
   isPointInPolygon,
+  getBoundaryGeoJson,
   findSchoolBySpatialLookup,
   calculateDistance,
   resolveCatchmentSchools

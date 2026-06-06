@@ -201,3 +201,10 @@ test('resolveCatchmentSchools maps properties in Moorabbin zone correctly', () =
   assert.ok(schools.some(s => s.name === 'Moorabbin Primary School' && s.type === 'Primary'));
   assert.ok(schools.some(s => s.name === 'Brighton Secondary College' && s.type === 'Secondary'));
 });
+
+test('findSchoolBySpatialLookup matches zoned school name for NSW address point dynamically', () => {
+  // Matthew Pearce boundary polygon covers [150.900 to 151.100, -33.800 to -33.600]
+  // Coordinates: lat -33.76, lng 150.966
+  const primaryMatch = findSchoolBySpatialLookup(-33.76, 150.966, 'NSW', 'Primary');
+  assert.equal(primaryMatch, 'Matthew Pearce Public School');
+});

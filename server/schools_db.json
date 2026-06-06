@@ -150,7 +150,9 @@
       "ranking": 15,
       "score": 99,
       "assessedYear": 2024,
-      "sector": "Government"
+      "sector": "Government",
+      "lat": -33.760,
+      "lng": 150.966
     }
   ],
   "QLD": [
@@ -162,5 +164,10 @@
       "assessedYear": 2024,
       "sector": "Government"
     }
-  ]
+  ],
+  "WA": [],
+  "SA": [],
+  "TAS": [],
+  "ACT": [],
+  "NT": []
 }
