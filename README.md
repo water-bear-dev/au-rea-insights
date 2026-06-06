@@ -28,9 +28,11 @@ This avoids exposing keys in the browser and reduces direct API throttling issue
 - School catchments (both Primary and Secondary) are matched using geospatial coordinates against local boundary polygons (ray-casting Point-in-Polygon).
 - Addresses are geocoded using OpenStreetMap Nominatim.
 - Zoned school distance is calculated using the geodetic Haversine formula.
-- Server returns `landSizeLogs` with per-source attempt details
-- Extension prints attempt logs in browser console for debugging
-- Request dedupe/debounce reduces duplicate calls on SPA navigation
+- School rankings consistently use the overall state-wide Better Education Ranks (which compare all public, private, and independent schools) rather than public-only ranks.
+- Server returns `landSizeLogs` with per-source attempt details.
+- Extension prints attempt logs in browser console for debugging.
+- Extension loading UI features a robust native SMIL-animated SVG spinner to ensure animation works reliably on host pages.
+- Request dedupe/debounce reduces duplicate calls on SPA navigation.
 
 ## Project Structure
 

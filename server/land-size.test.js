@@ -13,6 +13,7 @@ const {
   isPointInPolygon,
   findSchoolBySpatialLookup,
   calculateDistance,
+  findBestSchoolMatch,
   resolveCatchmentSchools
 } = require('./index');
 
@@ -188,7 +189,7 @@ test('findSchoolBySpatialLookup matches zoned school name for VIC address point'
   const primaryMatch = findSchoolBySpatialLookup(-37.9361680, 145.0344201, 'VIC', 'Primary');
   assert.equal(primaryMatch, 'Moorabbin Primary School');
   const secondaryMatch = findSchoolBySpatialLookup(-37.9361680, 145.0344201, 'VIC', 'Secondary');
-  assert.equal(secondaryMatch, 'Brighton Secondary College');
+  assert.equal(secondaryMatch, 'Sandringham College');
 });
 
 test('calculateDistance correctly calculates distance in km', () => {
@@ -199,7 +200,7 @@ test('calculateDistance correctly calculates distance in km', () => {
 test('resolveCatchmentSchools maps properties in Moorabbin zone correctly', () => {
   const schools = resolveCatchmentSchools('VIC', 'Hampton East', -37.9361680, 145.0344201);
   assert.ok(schools.some(s => s.name === 'Moorabbin Primary School' && s.type === 'Primary'));
-  assert.ok(schools.some(s => s.name === 'Brighton Secondary College' && s.type === 'Secondary'));
+  assert.ok(schools.some(s => s.name === 'Sandringham College' && s.type === 'Secondary'));
 });
 
 test('findSchoolBySpatialLookup matches zoned school name for NSW address point dynamically', () => {
@@ -207,4 +208,15 @@ test('findSchoolBySpatialLookup matches zoned school name for NSW address point 
   // Coordinates: lat -33.76, lng 150.966
   const primaryMatch = findSchoolBySpatialLookup(-33.76, 150.966, 'NSW', 'Primary');
   assert.equal(primaryMatch, 'Matthew Pearce Public School');
+});
+
+test('findBestSchoolMatch fallback retrieves previous ranked year if current is unranked', () => {
+  const fakeSchools = [
+    { name: 'Mock School', assessedYear: 2024, ranking: null, type: 'Secondary' },
+    { name: 'Mock School', assessedYear: 2023, ranking: 45, type: 'Secondary' },
+    { name: 'Mock School', assessedYear: 2022, ranking: 42, type: 'Secondary' }
+  ];
+  const result = findBestSchoolMatch(fakeSchools, 'Mock School', 'Secondary');
+  assert.equal(result.assessedYear, 2023);
+  assert.equal(result.ranking, 45);
 });

@@ -1,6 +1,6 @@
 # Agent Handoff: AU Real Estate Insights
 
-This handoff summarizes the latest production-oriented state after architecture and parser hardening.
+This handoff summarizes the latest production-oriented state after architecture, parser hardening, and school database consistency updates.
 
 ## 1) Current Architecture (Important)
 
@@ -28,19 +28,20 @@ This handoff summarizes the latest production-oriented state after architecture 
   - `[Proxy][LandSizeAttempt] {...}`
 - Extension console prints grouped attempt logs:
   - `[AU Insights] Land size resolution attempts`
+- Server console logs resolved school statistics when catchment is requested:
+  - `[School Lookup] Resolved Primary School: <name>, State Overall Score: <score>`
+  - `[School Lookup] Resolved Secondary College: <name>, Ranking: <ranking>`
 
-## 4) Recent Reliability Improvements
+## 4) Recent Reliability & UX Improvements
 
 - Removed browser-direct Gemini API path to reduce exposed-key and quota issues.
 - Added dedupe + debounce in extension request flow to reduce duplicate calls.
 - Added Gemini retry with exponential backoff + jitter for `429`/`503`.
 - Shortened Gemini prompt payload to reduce token pressure.
-- Switched Allhomes fallback URL to direct property slug form:
-  - `https://www.allhomes.com.au/<street>-<suburb>-<state>-<postcode>`
-- Hardened land-size parser to handle:
-  - `approx`, `approx.`, `approximately`
-  - HTML tag-split values around number/unit
-  - examples like `Block size: 188 m² approx.`
+- Switched Allhomes fallback URL to direct property slug form.
+- Hardened land-size parser to handle `approx` and tag-split values.
+- Replaced the extension loading indicator with a robust **SMIL-animated inline SVG spinner** to ensure the animation always spins smoothly on all host sites.
+- Re-styled the insights panel rows with flex gaps, `min-width` bounds, and non-shrinkable badges (`flex-shrink: 0`) to prevent school name text from touching or overlapping the ranking badges.
 
 ## 5) Validation Snapshot
 
@@ -51,30 +52,26 @@ This handoff summarizes the latest production-oriented state after architecture 
   - Allhomes slug URL generation
   - Gemini retry logic
   - `approx` and tag-split parser cases
-  - point-in-polygon lookup, geodetic distance calculation, and spatial school mapping
+  - point-in-polygon lookup, geodetic distance calculation, and spatial school mapping (including Sandringham College VIC boundary checks)
 
-## 6) Geospatial School Catchments
+## 6) Geospatial School Catchments & Database Consistency
 
 - Zoned catchments are resolved offline for both primary and secondary schools by comparing property coordinates to simplified GeoJSON boundary files (located in `server/data/school-zones/`).
-- Boundary files are loaded dynamically on-demand and cached in memory using `getBoundaryGeoJson(state, schoolType)` to support catchments in any Australian state or territory.
-- Listing addresses are geocoded using OpenStreetMap Nominatim with a custom User-Agent to avoid API blockades.
-- Point-in-polygon queries use an offline ray-casting algorithm.
-- Distance calculations use the Haversine formula for exact distance measurements in kilometers instead of random approximations.
+- Sandringham College has been added to the schools database under VIC, and its catchment boundary has been configured in `vic_secondary.json` to correctly map Hampton East properties.
+- **School database consistency**: All Victorian public secondary colleges in `schools_db.json` have been re-ranked using their **overall state-wide Better Education Ranks** (e.g. Balwyn High School #53, Glen Waverley #64, Mount Waverley #125, Brighton Secondary College #158) rather than public-only ranks to ensure consistency with independent and selective schools.
+- Distance calculations use the Haversine formula.
 
 ## 7) Operational Notes for Next Agent
 
 1. Ensure server is running before testing extension:
    - `npm --prefix server run dev`
 2. If results look stale, clear extension cache from popup.
-3. For parser misses on live pages:
-   - capture HTML snippet around the visible block/land size text
-   - extend targeted regex/selector support only (avoid broad generic `m²` scraping)
-4. Keep strict verified-only display behavior intact.
+3. Keep strict verified-only display behavior intact.
 
 ## 8) Guardrails
 
 - Do not move API key usage back into extension/browser context.
 - Do not trust model-generated numeric land size as authoritative display value.
 - Do not add hardcoded address overrides.
-- Do not make geocoding requests without a valid custom User-Agent header to prevent service blocks.
-- Ensure that simplified boundary file formats (e.g., GeoJSON polygons) remain simplified to prevent server startup latencies.
+- Do not make geocoding requests without a valid custom User-Agent header.
+- Ensure that school rankings continue to align with the overall state-wide ranking standard (not public-only ranks).

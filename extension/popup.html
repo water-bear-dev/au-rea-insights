@@ -235,11 +235,22 @@
         <span class="slider"></span>
       </label>
     </div>
+
+    <div class="setting-row" style="margin-top: 16px;">
+      <div>
+        <div class="setting-label">Developer Mode</div>
+        <div class="setting-desc">Enable developer controls and cache tools</div>
+      </div>
+      <label class="switch">
+        <input type="checkbox" id="toggle-dev-controls">
+        <span class="slider"></span>
+      </label>
+    </div>
   </div>
 
-  <div class="card">
+  <div class="card" id="developer-card" style="display: none;">
     <h2 class="card-title">Developer Controls</h2>
-    <button id="clear-cache" style="width: 100%; padding: 8px 12px; background-color: #ef4444; border: none; border-radius: 6px; color: #fff; font-family: inherit; font-weight: 600; font-size: 12px; cursor: pointer; transition: background-color 0.2s;">Clear Storage Cache</button>
+    <button id="clear-cache" style="width: 100%; padding: 8px 12px; background-color: #ef4444; border: none; border-radius: 6px; color: #fff; font-family: inherit; font-weight: 600; font-size: 12px; cursor: pointer; transition: all 0.2s;">Clear Storage Cache</button>
     <div id="clear-status" style="font-size: 11px; color: #fca5a5; margin-top: 6px; display: none; text-align: center;">Cache cleared successfully!</div>
   </div>
 

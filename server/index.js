@@ -550,6 +550,26 @@ async function resolveLandSizeStrict(address, options = {}) {
   };
 }
 
+// Find the best entry for a school, looking back at historical years if the current year is unranked
+function findBestSchoolMatch(stateSchools, matchedSchoolName, schoolType) {
+  const matches = stateSchools.filter(s => s.name.toLowerCase() === matchedSchoolName.toLowerCase());
+  if (matches.length === 0) return null;
+  
+  // Sort by assessedYear descending so we check most recent first
+  matches.sort((a, b) => b.assessedYear - a.assessedYear);
+  
+  const hasRank = (s) => {
+    if (schoolType === 'Secondary') {
+      return s.ranking !== null && s.ranking !== undefined;
+    } else {
+      return s.score !== null && s.score !== undefined;
+    }
+  };
+  
+  const rankedMatch = matches.find(hasRank);
+  return rankedMatch || matches[0];
+}
+
 // Resolve schools for catchment
 function resolveCatchmentSchools(state, suburb, latitude, longitude) {
   const stateSchools = schoolsDb[state] || [];
@@ -561,7 +581,7 @@ function resolveCatchmentSchools(state, suburb, latitude, longitude) {
     for (const type of schoolTypes) {
       const matchedSchoolName = findSchoolBySpatialLookup(latitude, longitude, state, type);
       if (matchedSchoolName) {
-        const dbSchool = stateSchools.find(s => s.name.toLowerCase() === matchedSchoolName.toLowerCase());
+        const dbSchool = findBestSchoolMatch(stateSchools, matchedSchoolName, type);
         if (dbSchool) {
           let distance = 0.5;
           if (typeof dbSchool.lat === 'number' && typeof dbSchool.lng === 'number') {
@@ -582,13 +602,23 @@ function resolveCatchmentSchools(state, suburb, latitude, longitude) {
   }
 
   // Find other schools matching suburb (e.g., to load a school if it wasn't matched spatially)
-  const localSchools = stateSchools.filter(school => {
+  const matchedNames = new Set();
+  const localSchools = [];
+  
+  stateSchools.forEach(school => {
     // Avoid listing duplicates or other schools of the same type if one is already resolved spatially
     if (resolved.some(r => r.type === school.type)) {
-      return false;
+      return;
     }
-    return school.name.toLowerCase().includes(suburb.toLowerCase()) || 
-           (school.suburb && school.suburb.toLowerCase() === suburb.toLowerCase());
+    const matchesName = school.name.toLowerCase().includes(suburb.toLowerCase()) || 
+                       (school.suburb && school.suburb.toLowerCase() === suburb.toLowerCase());
+    if (matchesName && !matchedNames.has(school.name.toLowerCase())) {
+      matchedNames.add(school.name.toLowerCase());
+      const bestMatch = findBestSchoolMatch(stateSchools, school.name, school.type);
+      if (bestMatch) {
+        localSchools.push(bestMatch);
+      }
+    }
   });
 
   localSchools.forEach((school, index) => {
@@ -609,51 +639,15 @@ function resolveCatchmentSchools(state, suburb, latitude, longitude) {
     });
   });
 
-  // Fallback: If no school in database matches suburb and we couldn't resolve any spatially
-  if (resolved.length === 0) {
-    resolved.push({
-      name: `${suburb} Primary School`,
-      type: 'Primary',
-      ranking: null,
-      score: null,
-      assessedYear: 2024,
-      sector: 'Government',
-      distance: 0.8
-    });
-    resolved.push({
-      name: `${suburb} Secondary College`,
-      type: 'Secondary',
-      ranking: null,
-      score: null,
-      assessedYear: 2024,
-      sector: 'Government',
-      distance: 1.5
-    });
-  } else {
-    // Fill in secondary/primary fallback if only one was resolved
-    if (!resolved.some(r => r.type === 'Primary')) {
-      resolved.push({
-        name: `${suburb} Primary School`,
-        type: 'Primary',
-        ranking: null,
-        score: null,
-        assessedYear: 2024,
-        sector: 'Government',
-        distance: 0.8
-      });
+  resolved.forEach(school => {
+    if (school.type === 'Primary') {
+      console.log(`[School Lookup] Resolved Primary School: ${school.name}, State Overall Score: ${school.score}`);
+    } else if (school.type === 'Secondary') {
+      console.log(`[School Lookup] Resolved Secondary College: ${school.name}, Ranking: ${school.ranking}`);
+    } else {
+      console.log(`[School Lookup] Resolved School: ${school.name}, Type: ${school.type}, Score: ${school.score}, Ranking: ${school.ranking}`);
     }
-    if (!resolved.some(r => r.type === 'Secondary')) {
-      resolved.push({
-        name: `${suburb} Secondary College`,
-        type: 'Secondary',
-        ranking: null,
-        score: null,
-        assessedYear: 2024,
-        sector: 'Government',
-        distance: 1.5
-      });
-    }
-  }
+  });
 
   return resolved;
 }
@@ -767,5 +761,6 @@ module.exports = {
   getBoundaryGeoJson,
   findSchoolBySpatialLookup,
   calculateDistance,
+  findBestSchoolMatch,
   resolveCatchmentSchools
 };

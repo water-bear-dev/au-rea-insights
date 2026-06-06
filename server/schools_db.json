@@ -3,8 +3,8 @@
     {
       "name": "Mount Waverley Secondary College",
       "type": "Secondary",
-      "ranking": 35,
-      "score": 96,
+      "ranking": 125,
+      "score": 92,
       "assessedYear": 2024,
       "sector": "Government"
     },
@@ -19,16 +19,16 @@
     {
       "name": "Glen Waverley Secondary College",
       "type": "Secondary",
-      "ranking": 18,
-      "score": 99,
+      "ranking": 64,
+      "score": 96,
       "assessedYear": 2024,
       "sector": "Government"
     },
     {
       "name": "Balwyn High School",
       "type": "Secondary",
-      "ranking": 12,
-      "score": 99,
+      "ranking": 53,
+      "score": 97,
       "assessedYear": 2024,
       "sector": "Government"
     },
@@ -87,12 +87,32 @@
     {
       "name": "Brighton Secondary College",
       "type": "Secondary",
-      "ranking": 57,
-      "score": 93,
+      "ranking": 158,
+      "score": 91,
       "assessedYear": 2024,
       "sector": "Government",
       "lat": -37.9221199,
       "lng": 145.0205244
+    },
+    {
+      "name": "Sandringham College",
+      "type": "Secondary",
+      "ranking": 141,
+      "score": 91,
+      "assessedYear": 2025,
+      "sector": "Government",
+      "lat": -37.95651,
+      "lng": 145.02567
+    },
+    {
+      "name": "Sandringham College",
+      "type": "Secondary",
+      "ranking": 144,
+      "score": 91,
+      "assessedYear": 2024,
+      "sector": "Government",
+      "lat": -37.95651,
+      "lng": 145.02567
     }
   ],
   "NSW": [

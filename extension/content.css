@@ -46,8 +46,9 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 10px 0;
+  padding: 14px 0;
   border-bottom: 1px dashed #e2e8f0;
+  gap: 16px;
 }
 
 .au-insights-school-row:last-child {
@@ -58,7 +59,8 @@
 .au-insights-school-info {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 4px;
+  min-width: 0;
 }
 
 .au-insights-school-name {
@@ -88,6 +90,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-shrink: 0;
 }
 
 .au-insights-rank-badge {
@@ -138,9 +141,9 @@
 
 /* Spinner animation */
 .au-insights-spinner {
-  width: 14px;
-  height: 14px;
-  border: 2px solid #cbd5e1;
+  width: 24px;
+  height: 24px;
+  border: 3px solid #cbd5e1;
   border-top-color: #2563eb;
   border-radius: 50%;
   animation: au-spin 0.8s linear infinite;
@@ -155,8 +158,9 @@
 .au-insights-loading-shell {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 14px;
   font-family: 'Outfit', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  padding: 4px 0;
 }
 
 .au-insights-loading-row {

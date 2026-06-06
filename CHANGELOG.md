@@ -4,6 +4,17 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+### Added
+- Added Sandringham College to the VIC schools database with overall Better Education rankings (#141 for 2025, #144 for 2024).
+- Added SVG loader spinner featuring native SMIL animation to ensure a robust and reliable loading indicator across all host sites.
+- Added console logging to the catchment resolution logic (`resolveCatchmentSchools`), printing resolved school names, primary school overall scores, and secondary college state rankings.
+
+### Changed
+- Re-ranked all Victorian public secondary colleges in `schools_db.json` using their overall state-wide Better Education Ranks instead of public-only ranks (e.g., Balwyn High School #53, Glen Waverley Secondary College #64, Mount Waverley Secondary College #125, Brighton Secondary College #158).
+- Adjusted catchment boundaries in `vic_secondary.json` to correctly map Hampton East coordinates to Sandringham College instead of Brighton Secondary College.
+- Restyled the school rows inside the insights panel to add flexible gap layouts, `min-width` bounds, and non-shrinkable badges (`flex-shrink: 0`) to prevent text overlapping or touching the ranking badges.
+- Increased layout margins and padding within the insights card for a cleaner and more user-friendly interface.
+
 ## [0.2.0] - 2026-06-05
 
 ### Added

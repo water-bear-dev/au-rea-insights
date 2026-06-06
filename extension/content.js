@@ -287,7 +287,12 @@ function injectLoadingIndicator() {
   container.innerHTML = `
     <div class="au-insights-loading-shell">
       <div class="au-insights-loading-row">
-        <span class="au-insights-spinner"></span>
+        <svg class="au-insights-spinner" width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" style="vertical-align: middle; flex-shrink: 0;">
+          <circle cx="12" cy="12" r="10" fill="none" stroke="#cbd5e1" stroke-width="3"/>
+          <path d="M 12 2 A 10 10 0 0 1 22 12" fill="none" stroke="#2563eb" stroke-width="3" stroke-linecap="round">
+            <animateTransform attributeName="transform" type="rotate" from="0 12 12" to="360 12 12" dur="0.8s" repeatCount="indefinite"/>
+          </path>
+        </svg>
         <span class="au-insights-loading-text">
           Retrieving property insights<span class="au-insights-loading-dots" aria-hidden="true"></span>
         </span>
@@ -345,7 +350,7 @@ function injectInsightsPanel(landSize, schools, showLandSize, showSchools) {
   if (showLandSize && landSize) {
     const sizeDisplay = landSize.toLowerCase().includes('not') ? 'Not available' : landSize;
     landSizeHtml = `
-      <div style="display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border-bottom: 1px dashed #e2e8f0; font-family: sans-serif;">
+      <div style="display: flex; align-items: center; justify-content: space-between; padding: 16px 4px; border-bottom: 1px dashed #e2e8f0; font-family: sans-serif;">
         <span style="color: #64748b; font-weight: 500; font-size: 13px; display: flex; align-items: center; gap: 6px;">📐 Estimated Land Size</span>
         <span style="color: #1e293b; font-weight: 600; font-size: 14px;">${sizeDisplay}</span>
       </div>
@@ -389,7 +394,7 @@ function injectInsightsPanel(landSize, schools, showLandSize, showSchools) {
     });
     
     schoolsHtml = `
-      <div class="au-insights-header" style="border-top: ${landSizeHtml ? 'none' : '1px solid transparent'}; border-bottom: none; margin-top: ${landSizeHtml ? '8px' : '0'}; padding-bottom: 0;">
+      <div class="au-insights-header" style="border-top: ${landSizeHtml ? 'none' : '1px solid transparent'}; border-bottom: none; margin-top: ${landSizeHtml ? '22px' : '0'}; padding-bottom: 0;">
         <h3>School Catchment</h3>
       </div>
       ${rowsHtml}
@@ -397,9 +402,8 @@ function injectInsightsPanel(landSize, schools, showLandSize, showSchools) {
   }
 
   container.innerHTML = `
-    <div class="au-insights-header" style="background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%); border-bottom: 1px solid #e2e8f0; padding: 12px 16px;">
+    <div class="au-insights-header" style="background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%); border-bottom: 1px solid #e2e8f0; padding: 12px 16px; margin-left: -16px; margin-right: -16px; margin-top: -16px; border-top-left-radius: 12px; border-top-right-radius: 12px;">
       <h3 style="margin: 0; font-size: 14px; font-weight: 700; color: #0f172a;">Property Insights</h3>
-      <span class="badge" style="background-color: #2563eb; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: 600;">AI Powered</span>
     </div>
     ${landSizeHtml}
     ${schoolsHtml}
