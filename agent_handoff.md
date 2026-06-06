@@ -7,7 +7,7 @@ This handoff summarizes the latest production-oriented state after architecture 
 - Extension (`extension/content.js`) is now proxy-only for data retrieval.
 - Local backend (`server/index.js`) handles land size + schools + Gemini fallback logic.
 - Gemini key lives only in `server/.env` (`GEMINI_API_KEY`).
-- Popup key input is no longer required for insights retrieval flow.
+- Popup key input has been completely removed from the extension interface.
 
 ## 2) Land Size Resolution Policy
 
@@ -51,8 +51,16 @@ This handoff summarizes the latest production-oriented state after architecture 
   - Allhomes slug URL generation
   - Gemini retry logic
   - `approx` and tag-split parser cases
+  - point-in-polygon lookup, geodetic distance calculation, and spatial school mapping
 
-## 6) Operational Notes for Next Agent
+## 6) Geospatial School Catchments
+
+- Zoned catchments are resolved offline by comparing property coordinates to simplified GeoJSON boundary files loaded on startup (located in `server/data/school-zones/`).
+- Listing addresses are geocoded using OpenStreetMap Nominatim with a custom User-Agent to avoid API blockades.
+- Point-in-polygon queries use an offline ray-casting algorithm.
+- Distance calculations use the Haversine formula for exact distance measurements in kilometers instead of random approximations.
+
+## 7) Operational Notes for Next Agent
 
 1. Ensure server is running before testing extension:
    - `npm --prefix server run dev`
@@ -62,8 +70,10 @@ This handoff summarizes the latest production-oriented state after architecture 
    - extend targeted regex/selector support only (avoid broad generic `m²` scraping)
 4. Keep strict verified-only display behavior intact.
 
-## 7) Guardrails
+## 8) Guardrails
 
 - Do not move API key usage back into extension/browser context.
 - Do not trust model-generated numeric land size as authoritative display value.
 - Do not add hardcoded address overrides.
+- Do not make geocoding requests without a valid custom User-Agent header to prevent service blocks.
+- Ensure that simplified boundary file formats (e.g., GeoJSON polygons) remain simplified to prevent server startup latencies.

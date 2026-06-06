@@ -1,0 +1,24 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "schoolName": "Brighton Secondary College",
+        "state": "VIC"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [145.010, -37.945],
+            [145.045, -37.945],
+            [145.045, -37.915],
+            [145.010, -37.915],
+            [145.010, -37.945]
+          ]
+        ]
+      }
+    }
+  ]
+}

@@ -9,7 +9,11 @@ const {
   fetchLandSizeFromPropertyComAu,
   fetchLandSizeFromAllhomes,
   geminiRequestWithRetry,
-  resolveLandSizeStrict
+  resolveLandSizeStrict,
+  isPointInPolygon,
+  findSchoolBySpatialLookup,
+  calculateDistance,
+  resolveCatchmentSchools
 } = require('./index');
 
 test('normalizeLandSize parses supported square meter formats', () => {
@@ -164,4 +168,36 @@ test('geminiRequestWithRetry retries once on 429 and succeeds', async () => {
 
   assert.deepEqual(response.data, { ok: true });
   assert.equal(attempts, 2);
+});
+
+test('isPointInPolygon correctly flags points inside and outside polygon', () => {
+  const polygon = [
+    [0, 0],
+    [10, 0],
+    [10, 10],
+    [0, 10],
+    [0, 0]
+  ];
+  assert.equal(isPointInPolygon([5, 5], polygon), true);
+  assert.equal(isPointInPolygon([15, 5], polygon), false);
+});
+
+test('findSchoolBySpatialLookup matches zoned school name for VIC address point', () => {
+  // Moorabbin Primary boundary polygon covers [145.025 to 145.050, -37.950 to -37.930]
+  // 19A Katoomba St: lat -37.9361680, lon 145.0344201
+  const primaryMatch = findSchoolBySpatialLookup(-37.9361680, 145.0344201, 'VIC', 'Primary');
+  assert.equal(primaryMatch, 'Moorabbin Primary School');
+  const secondaryMatch = findSchoolBySpatialLookup(-37.9361680, 145.0344201, 'VIC', 'Secondary');
+  assert.equal(secondaryMatch, 'Brighton Secondary College');
+});
+
+test('calculateDistance correctly calculates distance in km', () => {
+  const distance = calculateDistance(-37.9361680, 145.0344201, -37.9419715, 145.0392712);
+  assert.ok(distance > 0.5 && distance < 1.0);
+});
+
+test('resolveCatchmentSchools maps properties in Moorabbin zone correctly', () => {
+  const schools = resolveCatchmentSchools('VIC', 'Hampton East', -37.9361680, 145.0344201);
+  assert.ok(schools.some(s => s.name === 'Moorabbin Primary School' && s.type === 'Primary'));
+  assert.ok(schools.some(s => s.name === 'Brighton Secondary College' && s.type === 'Secondary'));
 });

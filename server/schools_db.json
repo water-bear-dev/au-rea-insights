@@ -63,6 +63,36 @@
       "score": 100,
       "assessedYear": 2024,
       "sector": "Independent"
+    },
+    {
+      "name": "Moorabbin Primary School",
+      "type": "Primary",
+      "ranking": 85,
+      "score": 91,
+      "assessedYear": 2024,
+      "sector": "Government",
+      "lat": -37.9419715,
+      "lng": 145.0392712
+    },
+    {
+      "name": "Hampton Primary School",
+      "type": "Primary",
+      "ranking": 50,
+      "score": 95,
+      "assessedYear": 2024,
+      "sector": "Government",
+      "lat": -37.9334885,
+      "lng": 145.0041868
+    },
+    {
+      "name": "Brighton Secondary College",
+      "type": "Secondary",
+      "ranking": 57,
+      "score": 93,
+      "assessedYear": 2024,
+      "sector": "Government",
+      "lat": -37.9221199,
+      "lng": 145.0205244
     }
   ],
   "NSW": [

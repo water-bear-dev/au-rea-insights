@@ -1,0 +1,43 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "schoolName": "Moorabbin Primary School",
+        "state": "VIC"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [145.025, -37.950],
+            [145.050, -37.950],
+            [145.050, -37.930],
+            [145.025, -37.930],
+            [145.025, -37.950]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "schoolName": "Hampton Primary School",
+        "state": "VIC"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [144.990, -37.950],
+            [145.020, -37.950],
+            [145.020, -37.920],
+            [144.990, -37.920],
+            [144.990, -37.950]
+          ]
+        ]
+      }
+    }
+  ]
+}

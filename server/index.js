@@ -20,6 +20,89 @@ try {
   console.error('Failed to load schools database:', e);
 }
 
+// Load school zones GeoJSON boundary files
+const schoolZonesPrimaryPath = path.join(__dirname, 'data', 'school-zones', 'vic_primary.json');
+const schoolZonesSecondaryPath = path.join(__dirname, 'data', 'school-zones', 'vic_secondary.json');
+let schoolZonesPrimaryGeoJson = { type: 'FeatureCollection', features: [] };
+let schoolZonesSecondaryGeoJson = { type: 'FeatureCollection', features: [] };
+try {
+  if (fs.existsSync(schoolZonesPrimaryPath)) {
+    schoolZonesPrimaryGeoJson = JSON.parse(fs.readFileSync(schoolZonesPrimaryPath, 'utf8'));
+  }
+  if (fs.existsSync(schoolZonesSecondaryPath)) {
+    schoolZonesSecondaryGeoJson = JSON.parse(fs.readFileSync(schoolZonesSecondaryPath, 'utf8'));
+  }
+} catch (e) {
+  console.error('Failed to load school zones boundary files:', e);
+}
+
+// Geocode address using Nominatim (with custom User-Agent)
+async function geocodeAddress(addressStr) {
+  try {
+    const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(addressStr)}&format=json&limit=1`;
+    const response = await axios.get(url, {
+      headers: {
+        'User-Agent': 'MyAppUserAgent/1.0'
+      },
+      timeout: 5000
+    });
+    if (response.data && response.data.length > 0) {
+      return {
+        lat: parseFloat(response.data[0].lat),
+        lng: parseFloat(response.data[0].lon)
+      };
+    }
+  } catch (e) {
+    console.warn(`[Proxy] Geocoding failed for ${addressStr}: ${e.message}`);
+  }
+  return null;
+}
+
+// Ray-casting Point-in-Polygon helper
+function isPointInPolygon(point, polygon) {
+  const x = point[0], y = point[1];
+  let inside = false;
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const xi = polygon[i][0], yi = polygon[i][1];
+    const xj = polygon[j][0], yj = polygon[j][1];
+    const intersect = ((yi > y) !== (yj > y))
+        && (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
+    if (intersect) inside = !inside;
+  }
+  return inside;
+}
+
+// Spatial lookup to find zoned school name
+function findSchoolBySpatialLookup(lat, lng, state, schoolType) {
+  const geojson = schoolType === 'Secondary' ? schoolZonesSecondaryGeoJson : schoolZonesPrimaryGeoJson;
+  if (!geojson || !geojson.features) return null;
+  const point = [lng, lat];
+  for (const feature of geojson.features) {
+    if (feature.properties && feature.properties.state === state) {
+      const coords = feature.geometry.coordinates;
+      if (coords && coords[0]) {
+        const exteriorRing = coords[0];
+        if (isPointInPolygon(point, exteriorRing)) {
+          return feature.properties.schoolName;
+        }
+      }
+    }
+  }
+  return null;
+}
+
+// Haversine distance calculator
+function calculateDistance(lat1, lon1, lat2, lon2) {
+  const R = 6371; // km
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+            Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+            Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return parseFloat((R * c).toFixed(1));
+}
+
 // Helper to standardise street name for property.com.au URLs
 function getStreetSlug(street) {
   let slug = street.toLowerCase();
@@ -462,30 +545,63 @@ async function resolveLandSizeStrict(address, options = {}) {
 // Resolve schools for catchment
 function resolveCatchmentSchools(state, suburb, latitude, longitude) {
   const stateSchools = schoolsDb[state] || [];
-  
-  // Find schools matching state and suburb
-  const localSchools = stateSchools.filter(school => 
-    school.name.toLowerCase().includes(suburb.toLowerCase()) || 
-    (school.suburb && school.suburb.toLowerCase() === suburb.toLowerCase())
-  );
-  
-  // Map schools into standard response format
-  const resolved = localSchools.map((school, index) => {
-    // Generate realistic distance if not geocoded
-    const distance = (0.3 + (index * 0.4) + (Math.random() * 0.2)).toFixed(1);
-    
-    return {
+  const resolved = [];
+
+  // Try spatial lookup first
+  if (typeof latitude === 'number' && typeof longitude === 'number') {
+    const schoolTypes = ['Primary', 'Secondary'];
+    for (const type of schoolTypes) {
+      const matchedSchoolName = findSchoolBySpatialLookup(latitude, longitude, state, type);
+      if (matchedSchoolName) {
+        const dbSchool = stateSchools.find(s => s.name.toLowerCase() === matchedSchoolName.toLowerCase());
+        if (dbSchool) {
+          let distance = 0.5;
+          if (typeof dbSchool.lat === 'number' && typeof dbSchool.lng === 'number') {
+            distance = calculateDistance(latitude, longitude, dbSchool.lat, dbSchool.lng);
+          }
+          resolved.push({
+            name: dbSchool.name,
+            type: dbSchool.type,
+            ranking: dbSchool.ranking,
+            score: dbSchool.score,
+            assessedYear: dbSchool.assessedYear,
+            sector: dbSchool.sector,
+            distance: distance
+          });
+        }
+      }
+    }
+  }
+
+  // Find other schools matching suburb (e.g., to load a school if it wasn't matched spatially)
+  const localSchools = stateSchools.filter(school => {
+    // Avoid listing duplicates or other schools of the same type if one is already resolved spatially
+    if (resolved.some(r => r.type === school.type)) {
+      return false;
+    }
+    return school.name.toLowerCase().includes(suburb.toLowerCase()) || 
+           (school.suburb && school.suburb.toLowerCase() === suburb.toLowerCase());
+  });
+
+  localSchools.forEach((school, index) => {
+    let distance;
+    if (typeof latitude === 'number' && typeof longitude === 'number' && typeof school.lat === 'number' && typeof school.lng === 'number') {
+      distance = calculateDistance(latitude, longitude, school.lat, school.lng);
+    } else {
+      distance = parseFloat((0.3 + (index * 0.4) + (Math.random() * 0.2)).toFixed(1));
+    }
+    resolved.push({
       name: school.name,
-      type: school.type, // Primary/Secondary
+      type: school.type,
       ranking: school.ranking,
       score: school.score,
       assessedYear: school.assessedYear,
       sector: school.sector,
-      distance: parseFloat(distance)
-    };
+      distance: distance
+    });
   });
-  
-  // Fallback: If no school in database matches suburb, return generic state school with state rank mock
+
+  // Fallback: If no school in database matches suburb and we couldn't resolve any spatially
   if (resolved.length === 0) {
     resolved.push({
       name: `${suburb} Primary School`,
@@ -505,8 +621,32 @@ function resolveCatchmentSchools(state, suburb, latitude, longitude) {
       sector: 'Government',
       distance: 1.5
     });
+  } else {
+    // Fill in secondary/primary fallback if only one was resolved
+    if (!resolved.some(r => r.type === 'Primary')) {
+      resolved.push({
+        name: `${suburb} Primary School`,
+        type: 'Primary',
+        ranking: null,
+        score: null,
+        assessedYear: 2024,
+        sector: 'Government',
+        distance: 0.8
+      });
+    }
+    if (!resolved.some(r => r.type === 'Secondary')) {
+      resolved.push({
+        name: `${suburb} Secondary College`,
+        type: 'Secondary',
+        ranking: null,
+        score: null,
+        assessedYear: 2024,
+        sector: 'Government',
+        distance: 1.5
+      });
+    }
   }
-  
+
   return resolved;
 }
 
@@ -564,6 +704,12 @@ app.get('/api/insights', async (req, res) => {
   if (!resolvedAddress.suburb) {
     return res.status(400).json({ error: 'Missing address components' });
   }
+
+  // Geocode address to resolve latitude & longitude
+  const addressStr = `${resolvedAddress.street}, ${resolvedAddress.suburb} ${resolvedAddress.state} ${resolvedAddress.postcode}`;
+  const coordinates = await geocodeAddress(addressStr);
+  const lat = coordinates ? coordinates.lat : null;
+  const lng = coordinates ? coordinates.lng : null;
   
   // 1. Fetch land size (strict verified-only policy)
   const landSizeResolution = await resolveLandSizeStrict(resolvedAddress);
@@ -571,11 +717,14 @@ app.get('/api/insights', async (req, res) => {
   // 2. Fetch schools
   const schools = resolveCatchmentSchools(
     resolvedAddress.state,
-    resolvedAddress.suburb
+    resolvedAddress.suburb,
+    lat,
+    lng
   );
   
   res.json({
     address: resolvedAddress,
+    coordinates: coordinates ? { lat, lng } : null,
     landSize: landSizeResolution.status === 'verified' && landSizeResolution.value ? landSizeResolution.value : 'Not available',
     landSizeMeta: landSizeResolution,
     landSizeLogs: Array.isArray(landSizeResolution.attempts) ? landSizeResolution.attempts : [],
@@ -604,5 +753,10 @@ module.exports = {
   fetchLandSizeFromGemini,
   geminiRequestWithRetry,
   sleep,
-  resolveLandSizeStrict
+  resolveLandSizeStrict,
+  geocodeAddress,
+  isPointInPolygon,
+  findSchoolBySpatialLookup,
+  calculateDistance,
+  resolveCatchmentSchools
 };

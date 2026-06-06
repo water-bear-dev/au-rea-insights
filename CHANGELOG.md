@@ -7,8 +7,12 @@ All notable changes to this project are documented in this file.
 ## [0.2.0] - 2026-06-05
 
 ### Added
+- Added offline Point-in-Polygon geospatial catchment resolution using simplified GeoJSON boundary files (`server/data/school-zones/vic_primary.json`).
+- Added Haversine geodetic distance calculation for zoned schools based on coordinates.
+- Added address geocoding via OpenStreetMap Nominatim on the proxy backend.
 - Added strict land-size resolution metadata (`landSizeMeta`) and per-attempt logs (`landSizeLogs`) from proxy responses.
 - Added server test coverage for:
+  - point-in-polygon lookup, geodetic distance calculation, and spatial school mapping
   - fallback ordering
   - 5-second fallback delay behavior
   - Allhomes direct slug URL building
@@ -23,6 +27,7 @@ All notable changes to this project are documented in this file.
 ### Changed
 - Switched architecture from browser-direct Gemini requests to proxy-only insights retrieval.
 - Moved Gemini key usage to server-side env (`server/.env`) via `GEMINI_API_KEY`.
+- Cleaned up the extension popup interface (`popup.html` and `popup.js`) to completely remove the Gemini API Key configuration card, placeholder elements, and external setup links.
 - Updated land-size fallback chain to:
   1. `realestate.com.au`
   2. `property.com.au`
