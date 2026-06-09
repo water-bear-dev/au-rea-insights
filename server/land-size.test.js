@@ -37,6 +37,11 @@ test('getAllhomesPropertyUrl builds direct property slug URL', () => {
   assert.equal(url, 'https://www.allhomes.com.au/19a-katoomba-street-hampton-east-vic-3188');
 });
 
+test('getAllhomesPropertyUrl builds unit slug URL correctly', () => {
+  const url = getAllhomesPropertyUrl('VIC', 'Cheltenham', '3192', '75/310 Warrigal Road');
+  assert.equal(url, 'https://www.allhomes.com.au/unit-75-310-warrigal-road-cheltenham-vic-3192');
+});
+
 test('fetchLandSizeFromPropertyComAu returns verified value when present', async () => {
   const fakeAxios = {
     get: async () => ({ data: '<html><body>Land size 503m²</body></html>' })

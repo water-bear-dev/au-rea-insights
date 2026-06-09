@@ -198,12 +198,21 @@ function getPropertyComAuProfileUrl(state, suburb, postcode, street) {
 }
 
 function getAllhomesPropertyUrl(state, suburb, postcode, street) {
-  const streetSlug = String(street || '')
-    .toLowerCase()
-    .trim()
-    .replace(/\//g, '-')
+  let streetLower = String(street || '').toLowerCase().trim();
+  let unitPrefix = '';
+  
+  // Convert unit prefix format, e.g. "75/310" to "unit-75-310-"
+  const unitRegex = /^(\d+)\/(\d+)\s+(.*)/i;
+  const unitMatch = streetLower.match(unitRegex);
+  if (unitMatch) {
+    unitPrefix = `unit-${unitMatch[1]}-${unitMatch[2]}-`;
+    streetLower = unitMatch[3];
+  }
+  
+  const streetSlug = streetLower
     .replace(/[^a-z0-9\s-]/g, '')
     .replace(/\s+/g, '-');
+    
   const suburbSlug = String(suburb || '')
     .toLowerCase()
     .trim()
@@ -212,7 +221,7 @@ function getAllhomesPropertyUrl(state, suburb, postcode, street) {
   const stateSlug = String(state || '').toLowerCase().trim();
   const postcodeSafe = String(postcode || '').trim();
 
-  return `https://www.allhomes.com.au/${streetSlug}-${suburbSlug}-${stateSlug}-${postcodeSafe}`;
+  return `https://www.allhomes.com.au/${unitPrefix}${streetSlug}-${suburbSlug}-${stateSlug}-${postcodeSafe}`;
 }
 
 function parseAddressFromRealEstatePropertyUrl(inputUrl) {
@@ -624,7 +633,8 @@ app.get('/api/insights', async (req, res) => {
   }
 
   // Geocode address to resolve latitude & longitude
-  const addressStr = `${resolvedAddress.street}, ${resolvedAddress.suburb} ${resolvedAddress.state} ${resolvedAddress.postcode}`;
+  const cleanStreet = resolvedAddress.street.replace(/^(\d+)\/(\d+)\s+/, '$2 ').trim();
+  const addressStr = `${cleanStreet}, ${resolvedAddress.suburb} ${resolvedAddress.state} ${resolvedAddress.postcode}`;
   const coordinates = await geocodeAddress(addressStr);
   const lat = coordinates ? coordinates.lat : null;
   const lng = coordinates ? coordinates.lng : null;

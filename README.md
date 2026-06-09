@@ -86,7 +86,7 @@ npm --prefix server run dev
 
 ### 4) Update School Database (Optional)
 
-To scrape the latest school overall ratings and rankings from Better Education:
+To scrape and automatically populate the database with the latest school overall ratings and rankings from Better Education (scrapes Top Schools pages and applies 10-second delays to avoid rate limits):
 
 ```bash
 node server/scripts/update_schools_db.js

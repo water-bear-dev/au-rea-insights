@@ -38,6 +38,25 @@
           ]
         ]
       }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "schoolName": "Cheltenham Secondary College",
+        "state": "VIC"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [145.050, -37.980],
+            [145.090, -37.980],
+            [145.090, -37.950],
+            [145.050, -37.950],
+            [145.050, -37.980]
+          ]
+        ]
+      }
     }
   ]
 }

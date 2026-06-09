@@ -52,7 +52,9 @@ This handoff summarizes the latest production-oriented state after architecture,
 ## 6) Geospatial School Catchments & Database Consistency
 
 - Zoned catchments are resolved offline for both primary and secondary schools by comparing property coordinates to simplified GeoJSON boundary files (located in `server/data/school-zones/`).
-- Sandringham College has been added to the schools database under VIC, and its catchment boundary has been configured in `vic_secondary.json` to correctly map Hampton East properties.
+- Sandringham and Cheltenham support: Sandringham College, Cheltenham Primary School, and Cheltenham Secondary College have been configured in `schools_db.json`, and their boundaries have been added to `vic_primary.json` and `vic_secondary.json` to enable catchment mapping.
+- Geocoding address clean: The proxy cleans unit prefixes (e.g. `75/310` -> `310`) prior to geocoding, improving Nominatim's accuracy.
+- Top Schools Scraper: The `update_schools_db.js` scraper script has been updated to parse Better Education's "Top Schools" lists directly from server-side HTML. It treats `schools_db.json` as a real database, appending newly discovered schools (supporting suburb/postcode and sector fields), and runs with a 10-second delay between requests to avoid rate limits (`429`).
 - **School database consistency**: All Victorian public secondary colleges in `schools_db.json` have been re-ranked using their **overall state-wide Better Education Ranks** (e.g. Balwyn High School #53, Glen Waverley #64, Mount Waverley #125, Brighton Secondary College #158) rather than public-only ranks to ensure consistency with independent and selective schools.
 - Distance calculations use the Haversine formula.
 

@@ -7,6 +7,12 @@ All notable changes to this project are documented in this file.
 ### Changed
 - Updated the land size fallback resolution chain (`resolveLandSizeStrict`) to check `realestate.com.au`, `property.com.au`, and `allhomes.com.au` without falling back to Gemini.
 - Removed Gemini-related unit tests and parameters.
+- Updated the school ratings database scraper script (`update_schools_db.js`) to target Better Education's "Top Schools" pages, enabling direct server-side HTML parsing.
+- Configured the scraper to treat `schools_db.json` as a real database, appending newly scraped schools if they do not exist, and parsing their suburb and sector values.
+- Added 10-second delays between scrapings in `update_schools_db.js` to prevent `429` rate limiting.
+- Expanded school catchment Mock boundaries in `vic_primary.json` and `vic_secondary.json` and added `Cheltenham Primary School` and `Cheltenham Secondary College` to the database to support Cheltenham listings.
+- Modified proxy address geocoding to clean unit prefix numbers before geocoding, improving Nominatim location accuracy.
+- Enhanced the Allhomes URL generator to support unit number prefix slugs (e.g. `unit-75-310-` prefixes).
 
 ### Removed
 - Removed Gemini fallback logic, retry functions, and exports from the local proxy server.
