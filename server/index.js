@@ -302,36 +302,7 @@ function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-function isRetriableGeminiStatus(status) {
-  return status === 429 || status === 503;
-}
 
-async function geminiRequestWithRetry(url, body, axiosInstance, options = {}) {
-  const maxAttempts = Number.isFinite(options.maxAttempts) ? Math.max(1, options.maxAttempts) : 3;
-  const baseDelayMs = Number.isFinite(options.baseDelayMs) ? Math.max(0, options.baseDelayMs) : 1000;
-  let lastError;
-
-  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
-    try {
-      return await axiosInstance.post(url, body, { timeout: 6000 });
-    } catch (e) {
-      const status = e && e.response ? e.response.status : null;
-      const canRetry = isRetriableGeminiStatus(status) && attempt < maxAttempts;
-      if (!canRetry) {
-        throw e;
-      }
-
-      // Exponential backoff + light jitter to reduce synchronized retries.
-      const jitterMs = Math.floor(Math.random() * 250);
-      const delayMs = (baseDelayMs * (2 ** (attempt - 1))) + jitterMs;
-      console.warn(`[Proxy] Gemini throttled (status=${status}). Retry ${attempt + 1}/${maxAttempts} in ${delayMs}ms.`);
-      await sleep(delayMs);
-      lastError = e;
-    }
-  }
-
-  throw lastError || new Error('Gemini request failed after retries');
-}
 
 function extractLandSizeFromHtml(htmlText) {
   if (!htmlText || typeof htmlText !== 'string') return null;
@@ -423,48 +394,10 @@ async function fetchLandSizeFromAllhomes(state, suburb, postcode, street, axiosI
   return createLandSizeResolution('unverified', null, 'allhomes_unavailable', 'no_structured_land_size');
 }
 
-// Fetch land size using Gemini API
-async function fetchLandSizeFromGemini(addressStr, axiosInstance = axios) {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) {
-    console.log('[Proxy] GEMINI_API_KEY is not set. Skipping server-side Gemini request.');
-    return createLandSizeResolution('unverified', null, 'gemini_unavailable', 'missing_server_api_key');
-  }
-  
-  try {
-    console.log(`[Proxy] Fetching land size from Gemini API for: ${addressStr}`);
-    const promptText = `Address: "${addressStr}". Return only land size as "<number>m²" or "Not available". No extra text.`;
-    
-    const response = await geminiRequestWithRetry(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
-      {
-        contents: [{
-          parts: [{
-            text: promptText
-          }]
-        }]
-      },
-      axiosInstance
-    );
-    
-    if (response.data && response.data.candidates && response.data.candidates[0].content.parts[0].text) {
-      const text = response.data.candidates[0].content.parts[0].text.trim();
-      const normalized = normalizeLandSize(text);
-      if (normalized) {
-        console.log(`[Proxy] Gemini returned unverified land size candidate: ${normalized}`);
-        return createLandSizeResolution('unverified', normalized, 'gemini_model', 'model_not_authoritative');
-      }
-    }
-  } catch (e) {
-    console.warn(`[Proxy] Gemini API request failed: ${e.message}`);
-    return createLandSizeResolution('unverified', null, 'gemini_error', e.message);
-  }
-  return createLandSizeResolution('unverified', null, 'gemini_no_value', 'not_available_or_unparseable');
-}
+
 
 async function resolveLandSizeStrict(address, options = {}) {
   const axiosInstance = options.axiosInstance || axios;
-  const useGemini = options.useGemini !== false;
   const waitMs = Number.isFinite(options.waitMs) ? Math.max(0, options.waitMs) : 5000;
   const sleepFn = options.sleepFn || sleep;
   const attempts = [];
@@ -522,29 +455,12 @@ async function resolveLandSizeStrict(address, options = {}) {
     return { ...allhomesResolution, attempts };
   }
 
-  // Gemini is retained only as an informational signal; it cannot produce a verified numeric value.
-  const geminiResolution = useGemini
-    ? await (async () => {
-      if (waitMs > 0) {
-        console.log(`[Proxy] Waiting ${waitMs}ms before Gemini fallback...`);
-        await sleepFn(waitMs);
-      }
-      return fetchLandSizeFromGemini(
-        `${address.street}, ${address.suburb} ${address.state} ${address.postcode}`,
-        axiosInstance
-      );
-    })()
-    : createLandSizeResolution('unverified', null, 'gemini_skipped', 'disabled_by_callsite');
-  const geminiAttempt = createLandSizeAttemptLog('gemini', geminiResolution, useGemini ? waitMs : 0);
-  attempts.push(geminiAttempt);
-  console.log('[Proxy][LandSizeAttempt]', JSON.stringify(geminiAttempt));
-
   return {
     ...createLandSizeResolution(
     'unverified',
     null,
-    allhomesResolution.source || propertyResolution.source || profileResolution.source || geminiResolution.source,
-    allhomesResolution.reason || propertyResolution.reason || profileResolution.reason || geminiResolution.reason || 'verification_failed'
+    allhomesResolution.source || propertyResolution.source || profileResolution.source,
+    allhomesResolution.reason || propertyResolution.reason || profileResolution.reason || 'verification_failed'
     ),
     attempts
   };
@@ -752,8 +668,6 @@ module.exports = {
   fetchLandSizeFromRealEstateProfile,
   fetchLandSizeFromPropertyComAu,
   fetchLandSizeFromAllhomes,
-  fetchLandSizeFromGemini,
-  geminiRequestWithRetry,
   sleep,
   resolveLandSizeStrict,
   geocodeAddress,

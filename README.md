@@ -11,10 +11,9 @@ Chrome extension + local proxy server that enriches listings on `realestate.com.
 The project is now **proxy-first**:
 
 - Extension (`extension/content.js`) calls only `http://localhost:3000/api/insights`
-- Server (`server/index.js`) performs data resolution and any Gemini calls
-- Gemini key is stored server-side in `server/.env` (`GEMINI_API_KEY`), never in extension storage
+- Server (`server/index.js`) performs data resolution
 
-This avoids exposing keys in the browser and reduces direct API throttling issues.
+This avoids direct cross-origin fetches in the browser.
 
 ## Key Behaviors
 
@@ -23,7 +22,6 @@ This avoids exposing keys in the browser and reduces direct API throttling issue
   1. `realestate.com.au`
   2. `property.com.au`
   3. `allhomes.com.au` (direct property slug URL)
-  4. Gemini signal only (non-authoritative for final numeric display)
 - 5-second wait is applied before each fallback step
 - School catchments (both Primary and Secondary) are matched using geospatial coordinates against local boundary polygons (ray-casting Point-in-Polygon).
 - Addresses are geocoded using OpenStreetMap Nominatim.
@@ -76,7 +74,6 @@ au-rea-insights/
 Create `server/.env`:
 
 ```env
-GEMINI_API_KEY=your_rotated_key_here
 PORT=3000
 ```
 
@@ -121,8 +118,4 @@ Open local mock page for UI checks:
 - Verify fallback attempts in server logs:
   - `[Proxy][LandSizeAttempt] ...`
 
-## Security Notes
 
-- Do not store Gemini keys in extension storage
-- Rotate keys immediately if they are exposed
-- Restrict API key scope to Generative Language API where possible

@@ -4,6 +4,17 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+### Changed
+- Updated the land size fallback resolution chain (`resolveLandSizeStrict`) to check `realestate.com.au`, `property.com.au`, and `allhomes.com.au` without falling back to Gemini.
+- Removed Gemini-related unit tests and parameters.
+
+### Removed
+- Removed Gemini fallback logic, retry functions, and exports from the local proxy server.
+- Removed `GEMINI_API_KEY` configuration from the backend proxy environment settings (`server/.env`).
+- Removed unused CSS rules for `.api-key-input` and `.save-status` from the Chrome extension `popup.html`.
+
+## [0.2.1] - 2026-06-09
+
 ### Added
 - Added Sandringham College to the VIC schools database with overall Better Education rankings (#141 for 2025, #144 for 2024).
 - Added SVG loader spinner featuring native SMIL animation to ensure a robust and reliable loading indicator across all host sites.

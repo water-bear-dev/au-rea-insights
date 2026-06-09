@@ -8,7 +8,6 @@ const {
   extractLandSizeFromHtml,
   fetchLandSizeFromPropertyComAu,
   fetchLandSizeFromAllhomes,
-  geminiRequestWithRetry,
   resolveLandSizeStrict,
   isPointInPolygon,
   findSchoolBySpatialLookup,
@@ -88,7 +87,6 @@ test('resolveLandSizeStrict falls back from realestate to property.com.au', asyn
     { state: 'VIC', suburb: 'Richmond', postcode: '3121', street: '12 Bridge Street' },
     {
       axiosInstance: fakeAxios,
-      useGemini: false,
       waitMs: 5000,
       sleepFn: async (ms) => { sleepCalls.push(ms); }
     }
@@ -125,7 +123,6 @@ test('resolveLandSizeStrict falls back to allhomes when first two sources fail',
     { state: 'ACT', suburb: 'Turner', postcode: '2612', street: '10 Watson Street' },
     {
       axiosInstance: fakeAxios,
-      useGemini: false,
       waitMs: 5000,
       sleepFn: async (ms) => { sleepCalls.push(ms); }
     }
@@ -146,30 +143,7 @@ test('resolveLandSizeStrict falls back to allhomes when first two sources fail',
   assert.equal(result.attempts[2].landSize, '455m²');
 });
 
-test('geminiRequestWithRetry retries once on 429 and succeeds', async () => {
-  let attempts = 0;
-  const fakeAxios = {
-    post: async () => {
-      attempts += 1;
-      if (attempts === 1) {
-        const err = new Error('rate limited');
-        err.response = { status: 429 };
-        throw err;
-      }
-      return { data: { ok: true } };
-    }
-  };
 
-  const response = await geminiRequestWithRetry(
-    'https://example.test',
-    { contents: [] },
-    fakeAxios,
-    { maxAttempts: 2, baseDelayMs: 1 }
-  );
-
-  assert.deepEqual(response.data, { ok: true });
-  assert.equal(attempts, 2);
-});
 
 test('isPointInPolygon correctly flags points inside and outside polygon', () => {
   const polygon = [
