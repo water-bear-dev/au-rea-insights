@@ -1,0 +1,10 @@
+{
+  "name": "au-real-estate-insights-root",
+  "version": "1.0.0",
+  "scripts": {
+    "start": "npm --prefix server start",
+    "test": "npm --prefix server test",
+    "dev": "npm --prefix server run dev",
+    "scrape": "node server/scripts/update_schools_db.js"
+  }
+}
