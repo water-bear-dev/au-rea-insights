@@ -57,6 +57,25 @@
           ]
         ]
       }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "schoolName": "South Melbourne Primary School",
+        "state": "VIC"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [144.900, -37.830],
+            [145.000, -37.830],
+            [145.000, -37.800],
+            [144.900, -37.800],
+            [144.900, -37.830]
+          ]
+        ]
+      }
     }
   ]
 }

@@ -526,44 +526,6 @@ function resolveCatchmentSchools(state, suburb, latitude, longitude) {
     }
   }
 
-  // Find other schools matching suburb (e.g., to load a school if it wasn't matched spatially)
-  const matchedNames = new Set();
-  const localSchools = [];
-  
-  stateSchools.forEach(school => {
-    // Avoid listing duplicates or other schools of the same type if one is already resolved spatially
-    if (resolved.some(r => r.type === school.type)) {
-      return;
-    }
-    const matchesName = school.name.toLowerCase().includes(suburb.toLowerCase()) || 
-                       (school.suburb && school.suburb.toLowerCase() === suburb.toLowerCase());
-    if (matchesName && !matchedNames.has(school.name.toLowerCase())) {
-      matchedNames.add(school.name.toLowerCase());
-      const bestMatch = findBestSchoolMatch(stateSchools, school.name, school.type);
-      if (bestMatch) {
-        localSchools.push(bestMatch);
-      }
-    }
-  });
-
-  localSchools.forEach((school, index) => {
-    let distance;
-    if (typeof latitude === 'number' && typeof longitude === 'number' && typeof school.lat === 'number' && typeof school.lng === 'number') {
-      distance = calculateDistance(latitude, longitude, school.lat, school.lng);
-    } else {
-      distance = parseFloat((0.3 + (index * 0.4) + (Math.random() * 0.2)).toFixed(1));
-    }
-    resolved.push({
-      name: school.name,
-      type: school.type,
-      ranking: school.ranking,
-      score: school.score,
-      assessedYear: school.assessedYear,
-      sector: school.sector,
-      distance: distance
-    });
-  });
-
   resolved.forEach(school => {
     if (school.type === 'Primary') {
       console.log(`[School Lookup] Resolved Primary School: ${school.name}, State Overall Score: ${school.score}`);
