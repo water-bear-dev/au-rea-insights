@@ -1,5 +1,5 @@
 // Configuration
-const API_BASE_URL = 'https://au-real-estate-insights-proxy.onrender.com'; // Change to your deployed URL (e.g., 'https://my-insights-app.onrender.com')
+const API_BASE_URL = 'https://au-rea-insights-5mzdpd2qk-andrew-phams-projects-adfc4da2.vercel.app'; // Change to your deployed URL (e.g., 'https://my-insights-app.onrender.com')
 const CACHE_PREFIX = 'insights_cache_v2_';
 const LEGACY_CACHE_PREFIX = 'insights_cache_';
 const INSIGHTS_DEBOUNCE_MS = 800;
@@ -402,18 +402,18 @@ function injectInsightsPanel(landSize, schools, showLandSize, showSchools) {
     schools.forEach(school => {
       let ratingBadge = '';
       if (school.type && school.type.toLowerCase() === 'primary') {
-        ratingBadge = school.score 
+        ratingBadge = school.score
           ? `<div class="au-insights-rank-badge" style="background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%); box-shadow: 0 2px 8px rgba(37, 99, 235, 0.15);">Score: ${school.score}</div>`
           : `<div class="au-insights-rank-none">No Score</div>`;
       } else {
-        ratingBadge = school.ranking 
+        ratingBadge = school.ranking
           ? `<div class="au-insights-rank-badge">Rank #${school.ranking}</div>`
           : `<div class="au-insights-rank-none">Unranked</div>`;
       }
-      
+
       const assessedYear = school.assessedYear ? `Assessed ${school.assessedYear}` : 'No rating data';
       const distanceText = school.distance ? ` • ${school.distance}km` : '';
-      
+
       rowsHtml += `
         <div class="au-insights-school-row">
           <div class="au-insights-school-info">
@@ -429,7 +429,7 @@ function injectInsightsPanel(landSize, schools, showLandSize, showSchools) {
         </div>
       `;
     });
-    
+
     schoolsHtml = `
       <div class="au-insights-header" style="border-top: ${landSizeHtml ? 'none' : '1px solid transparent'}; border-bottom: none; margin-top: ${landSizeHtml ? '22px' : '0'}; padding-bottom: 0;">
         <h3>School Catchment</h3>
