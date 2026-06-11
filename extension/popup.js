@@ -1,14 +1,12 @@
 document.addEventListener('DOMContentLoaded', async () => {
   const CACHE_PREFIXES = ['insights_cache_', 'insights_cache_v2_'];
   const toggleLandSize = document.getElementById('toggle-land-size');
-  const toggleSchools = document.getElementById('toggle-schools');
   const toggleDevControls = document.getElementById('toggle-dev-controls');
   const developerCard = document.getElementById('developer-card');
 
   // Load saved configurations
-  chrome.storage.local.get(['showLandSize', 'showSchools', 'showDevControls'], (result) => {
+  chrome.storage.local.get(['showLandSize', 'showDevControls'], (result) => {
     toggleLandSize.checked = result.showLandSize !== false;
-    toggleSchools.checked = result.showSchools !== false;
     
     const showDev = result.showDevControls === true;
     toggleDevControls.checked = showDev;
@@ -18,10 +16,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Save changes
   toggleLandSize.addEventListener('change', () => {
     chrome.storage.local.set({ showLandSize: toggleLandSize.checked });
-  });
-
-  toggleSchools.addEventListener('change', () => {
-    chrome.storage.local.set({ showSchools: toggleSchools.checked });
   });
 
   toggleDevControls.addEventListener('change', () => {

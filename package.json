@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "scripts": {
     "start": "npm --prefix server start",
+    "stop": "lsof -ti:3000 | xargs kill -9",
     "test": "npm --prefix server test",
     "dev": "npm --prefix server run dev",
     "scrape": "node server/scripts/update_schools_db.js"

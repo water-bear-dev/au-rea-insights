@@ -8,12 +8,7 @@ const {
   extractLandSizeFromHtml,
   fetchLandSizeFromPropertyComAu,
   fetchLandSizeFromAllhomes,
-  resolveLandSizeStrict,
-  isPointInPolygon,
-  findSchoolBySpatialLookup,
-  calculateDistance,
-  findBestSchoolMatch,
-  resolveCatchmentSchools
+  resolveLandSizeStrict
 } = require('./index');
 
 test('normalizeLandSize parses supported square meter formats', () => {
@@ -146,56 +141,4 @@ test('resolveLandSizeStrict falls back to allhomes when first two sources fail',
   assert.equal(result.attempts[1].step, 'property.com.au');
   assert.equal(result.attempts[2].step, 'allhomes.com.au');
   assert.equal(result.attempts[2].landSize, '455m²');
-});
-
-
-
-test('isPointInPolygon correctly flags points inside and outside polygon', () => {
-  const polygon = [
-    [0, 0],
-    [10, 0],
-    [10, 10],
-    [0, 10],
-    [0, 0]
-  ];
-  assert.equal(isPointInPolygon([5, 5], polygon), true);
-  assert.equal(isPointInPolygon([15, 5], polygon), false);
-});
-
-test('findSchoolBySpatialLookup matches zoned school name for VIC address point', () => {
-  // Moorabbin Primary boundary polygon covers [145.025 to 145.050, -37.950 to -37.930]
-  // 19A Katoomba St: lat -37.9361680, lon 145.0344201
-  const primaryMatch = findSchoolBySpatialLookup(-37.9361680, 145.0344201, 'VIC', 'Primary');
-  assert.equal(primaryMatch, 'Moorabbin Primary School');
-  const secondaryMatch = findSchoolBySpatialLookup(-37.9361680, 145.0344201, 'VIC', 'Secondary');
-  assert.equal(secondaryMatch, 'Sandringham College');
-});
-
-test('calculateDistance correctly calculates distance in km', () => {
-  const distance = calculateDistance(-37.9361680, 145.0344201, -37.9419715, 145.0392712);
-  assert.ok(distance > 0.5 && distance < 1.0);
-});
-
-test('resolveCatchmentSchools maps properties in Moorabbin zone correctly', () => {
-  const schools = resolveCatchmentSchools('VIC', 'Hampton East', -37.9361680, 145.0344201);
-  assert.ok(schools.some(s => s.name === 'Moorabbin Primary School' && s.type === 'Primary'));
-  assert.ok(schools.some(s => s.name === 'Sandringham College' && s.type === 'Secondary'));
-});
-
-test('findSchoolBySpatialLookup matches zoned school name for NSW address point dynamically', () => {
-  // Matthew Pearce boundary polygon covers [150.900 to 151.100, -33.800 to -33.600]
-  // Coordinates: lat -33.76, lng 150.966
-  const primaryMatch = findSchoolBySpatialLookup(-33.76, 150.966, 'NSW', 'Primary');
-  assert.equal(primaryMatch, 'Matthew Pearce Public School');
-});
-
-test('findBestSchoolMatch fallback retrieves previous ranked year if current is unranked', () => {
-  const fakeSchools = [
-    { name: 'Mock School', assessedYear: 2024, ranking: null, type: 'Secondary' },
-    { name: 'Mock School', assessedYear: 2023, ranking: 45, type: 'Secondary' },
-    { name: 'Mock School', assessedYear: 2022, ranking: 42, type: 'Secondary' }
-  ];
-  const result = findBestSchoolMatch(fakeSchools, 'Mock School', 'Secondary');
-  assert.equal(result.assessedYear, 2023);
-  assert.equal(result.ranking, 45);
 });

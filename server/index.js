@@ -496,18 +496,20 @@ function findBestSchoolMatch(stateSchools, matchedSchoolName, schoolType) {
 }
 
 // Resolve schools for catchment
-function resolveCatchmentSchools(state, suburb, latitude, longitude) {
+async function resolveCatchmentSchools(state, suburb, latitude, longitude) {
   const stateSchools = schoolsDb[state] || [];
   const resolved = [];
 
   // Try spatial lookup first
   if (typeof latitude === 'number' && typeof longitude === 'number') {
     const schoolTypes = ['Primary', 'Secondary'];
+    let foundPrimary = false;
     for (const type of schoolTypes) {
       const matchedSchoolName = findSchoolBySpatialLookup(latitude, longitude, state, type);
       if (matchedSchoolName) {
         const dbSchool = findBestSchoolMatch(stateSchools, matchedSchoolName, type);
         if (dbSchool) {
+          if (type === 'Primary') foundPrimary = true;
           let distance = 0.5;
           if (typeof dbSchool.lat === 'number' && typeof dbSchool.lng === 'number') {
             distance = calculateDistance(latitude, longitude, dbSchool.lat, dbSchool.lng);
@@ -524,15 +526,67 @@ function resolveCatchmentSchools(state, suburb, latitude, longitude) {
         }
       }
     }
+
+    // If no primary school is found via spatial boundary, fallback to 2 closest primary schools in the suburb
+    if (!foundPrimary && suburb) {
+      console.log(`[School Lookup] No spatial catchment primary school found. Finding closest primary schools in ${suburb}...`);
+      
+      const primarySchools = [];
+      const seen = new Set();
+      for (const school of stateSchools) {
+        if (school.type === 'Primary' && school.suburb && school.suburb.toLowerCase() === suburb.toLowerCase()) {
+          if (!seen.has(school.name.toLowerCase())) {
+            seen.add(school.name.toLowerCase());
+            const bestMatch = findBestSchoolMatch(stateSchools, school.name, 'Primary');
+            if (bestMatch) {
+              primarySchools.push(bestMatch);
+            }
+          }
+        }
+      }
+
+      const schoolsWithDistance = [];
+      for (const school of primarySchools) {
+        let latVal = school.lat;
+        let lngVal = school.lng;
+        if (typeof latVal !== 'number' || typeof lngVal !== 'number') {
+          const query = `${school.name}, ${suburb} ${state}`;
+          console.log(`[School Lookup] Geocoding fallback school: "${query}"`);
+          const coords = await geocodeAddress(query);
+          if (coords) {
+            latVal = coords.lat;
+            lngVal = coords.lng;
+          }
+        }
+
+        if (typeof latVal === 'number' && typeof lngVal === 'number') {
+          const dist = calculateDistance(latitude, longitude, latVal, lngVal);
+          schoolsWithDistance.push({
+            name: school.name,
+            type: school.type,
+            ranking: school.ranking,
+            score: school.score,
+            assessedYear: school.assessedYear,
+            sector: school.sector,
+            distance: dist
+          });
+        }
+      }
+
+      // Sort by distance and pick the 2 closest primary schools
+      schoolsWithDistance.sort((a, b) => a.distance - b.distance);
+      const closestPrimary = schoolsWithDistance.slice(0, 2);
+      resolved.push(...closestPrimary);
+    }
   }
 
   resolved.forEach(school => {
     if (school.type === 'Primary') {
-      console.log(`[School Lookup] Resolved Primary School: ${school.name}, State Overall Score: ${school.score}`);
+      console.log(`[School Lookup] Resolved Primary School: ${school.name}, State Overall Score: ${school.score}, Distance: ${school.distance}km`);
     } else if (school.type === 'Secondary') {
-      console.log(`[School Lookup] Resolved Secondary College: ${school.name}, Ranking: ${school.ranking}`);
+      console.log(`[School Lookup] Resolved Secondary College: ${school.name}, Ranking: ${school.ranking}, Distance: ${school.distance}km`);
     } else {
-      console.log(`[School Lookup] Resolved School: ${school.name}, Type: ${school.type}, Score: ${school.score}, Ranking: ${school.ranking}`);
+      console.log(`[School Lookup] Resolved School: ${school.name}, Type: ${school.type}, Score: ${school.score}, Ranking: ${school.ranking}, Distance: ${school.distance}km`);
     }
   });
 
@@ -594,31 +648,14 @@ app.get('/api/insights', async (req, res) => {
     return res.status(400).json({ error: 'Missing address components' });
   }
 
-  // Geocode address to resolve latitude & longitude
-  const cleanStreet = resolvedAddress.street.replace(/^(\d+)\/(\d+)\s+/, '$2 ').trim();
-  const addressStr = `${cleanStreet}, ${resolvedAddress.suburb} ${resolvedAddress.state} ${resolvedAddress.postcode}`;
-  const coordinates = await geocodeAddress(addressStr);
-  const lat = coordinates ? coordinates.lat : null;
-  const lng = coordinates ? coordinates.lng : null;
-  
-  // 1. Fetch land size (strict verified-only policy)
+  // Fetch land size (strict verified-only policy)
   const landSizeResolution = await resolveLandSizeStrict(resolvedAddress);
-  
-  // 2. Fetch schools
-  const schools = resolveCatchmentSchools(
-    resolvedAddress.state,
-    resolvedAddress.suburb,
-    lat,
-    lng
-  );
   
   res.json({
     address: resolvedAddress,
-    coordinates: coordinates ? { lat, lng } : null,
     landSize: landSizeResolution.status === 'verified' && landSizeResolution.value ? landSizeResolution.value : 'Not available',
     landSizeMeta: landSizeResolution,
-    landSizeLogs: Array.isArray(landSizeResolution.attempts) ? landSizeResolution.attempts : [],
-    schools: schools
+    landSizeLogs: Array.isArray(landSizeResolution.attempts) ? landSizeResolution.attempts : []
   });
 });
 

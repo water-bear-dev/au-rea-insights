@@ -76,6 +76,25 @@
           ]
         ]
       }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "schoolName": "Mount Waverley Primary School",
+        "state": "VIC"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [145.120, -37.890],
+            [145.170, -37.890],
+            [145.170, -37.850],
+            [145.120, -37.850],
+            [145.120, -37.890]
+          ]
+        ]
+      }
     }
   ]
 }

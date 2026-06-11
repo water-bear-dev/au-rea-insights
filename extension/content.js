@@ -6,34 +6,33 @@ const inflightRequests = new Set();
 const lastFetchAtByKey = new Map();
 
 // Retrieve settings from storage
-chrome.storage.local.get(['showLandSize', 'showSchools'], (result) => {
+chrome.storage.local.get(['showLandSize'], (result) => {
   const showLandSize = result.showLandSize !== false;
-  const showSchools = result.showSchools !== false;
   
-  if (showLandSize || showSchools) {
-    init(showLandSize, showSchools);
+  if (showLandSize) {
+    init(showLandSize);
   }
 });
 
-function init(showLandSize, showSchools) {
+function init(showLandSize) {
   let lastUrl = location.href;
   
   // Initial check
-  checkPage(showLandSize, showSchools);
+  checkPage(showLandSize);
   
   // URL change observer (due to Single Page App transitions on REA/Domain)
   const observer = new MutationObserver(() => {
     if (location.href !== lastUrl) {
       lastUrl = location.href;
       // Wait briefly for new content to render
-      setTimeout(() => checkPage(showLandSize, showSchools), 1000);
+      setTimeout(() => checkPage(showLandSize), 1000);
     }
   });
   
   observer.observe(document.body, { childList: true, subtree: true });
 }
 
-function checkPage(showLandSize, showSchools) {
+function checkPage(showLandSize) {
   const isREA = document.querySelector('.property-info-address, h1.property-info-address, [data-testid="listing-address"]');
   const isDomain = document.querySelector('h1[data-testid="address-wrapper"], h1.css-72ndy');
   const isMock = window.location.pathname.includes('mock_pages.html');
@@ -48,7 +47,7 @@ function checkPage(showLandSize, showSchools) {
   // Check if we already injected our content
   if (document.getElementById('au-insights-schools-section') || document.getElementById('au-insights-proxy-warning')) return;
 
-  fetchPropertyInsights(addressInfo, showLandSize, showSchools);
+  fetchPropertyInsights(addressInfo, showLandSize);
 }
 
 function injectProxyWarning() {
@@ -191,7 +190,7 @@ function getAddress() {
   };
 }
 
-async function fetchPropertyInsights(addressInfo, showLandSize, showSchools) {
+async function fetchPropertyInsights(addressInfo, showLandSize) {
   const addressKey = addressInfo.full || `${addressInfo.street}, ${addressInfo.suburb} ${addressInfo.state} ${addressInfo.postcode}`;
   const normalizedAddressKey = addressKey.toLowerCase().replace(/[^a-z0-9]/g, '_');
   const cacheKey = CACHE_PREFIX + normalizedAddressKey;
@@ -228,7 +227,7 @@ async function fetchPropertyInsights(addressInfo, showLandSize, showSchools) {
     injectLoadingIndicator();
     
     try {
-      let data = { landSize: 'Not available', schools: [], landSizeMeta: { status: 'unverified', source: 'none', reason: 'default' } };
+      let data = { landSize: 'Not available', landSizeMeta: { status: 'unverified', source: 'none', reason: 'default' } };
       console.log('[AU Insights] Resolving insights via local proxy...');
       const localCheck = await fetch('http://localhost:3000/health', { method: 'GET' });
       if (!localCheck.ok) throw new Error('Local proxy not healthy');
@@ -244,7 +243,6 @@ async function fetchPropertyInsights(addressInfo, showLandSize, showSchools) {
       if (!response.ok) throw new Error('Local insights fetch failed');
       const localData = await response.json();
       
-      data.schools = localData.schools || [];
       data.landSizeMeta = localData.landSizeMeta || { status: 'unverified', source: 'proxy_unknown', reason: 'missing_meta' };
       data.landSize = data.landSizeMeta.status === 'verified' ? (localData.landSize || 'Not available') : 'Not available';
       if (Array.isArray(localData.landSizeLogs)) {
@@ -265,7 +263,7 @@ async function fetchPropertyInsights(addressInfo, showLandSize, showSchools) {
         chrome.storage.local.set(cacheData);
         
         removeLoadingIndicator();
-        injectInsightsPanel(data.landSize, data.schools, showLandSize, showSchools);
+        injectInsightsPanel(data.landSize, showLandSize);
       }
     } catch (error) {
       console.error('[AU Insights] Error resolving insights:', error);
@@ -338,7 +336,7 @@ function removeLoadingIndicator() {
   }
 }
 
-function injectInsightsPanel(landSize, schools, showLandSize, showSchools) {
+function injectInsightsPanel(landSize, showLandSize) {
   // Prevent duplicate injection
   if (document.getElementById('au-insights-schools-section')) return;
 
@@ -357,56 +355,11 @@ function injectInsightsPanel(landSize, schools, showLandSize, showSchools) {
     `;
   }
 
-  let schoolsHtml = '';
-  if (showSchools && schools && schools.length > 0) {
-    let rowsHtml = '';
-    schools.forEach(school => {
-      let ratingBadge = '';
-      
-      // Primary schools show overall BetterEducation score (e.g. 98/100), secondary shows State rank (e.g. Rank #35)
-      if (school.type && school.type.toLowerCase() === 'primary') {
-        ratingBadge = school.score 
-          ? `<div class="au-insights-rank-badge" style="background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%); box-shadow: 0 2px 8px rgba(37, 99, 235, 0.15);">Score: ${school.score}</div>`
-          : `<div class="au-insights-rank-none">No Score</div>`;
-      } else {
-        ratingBadge = school.ranking 
-          ? `<div class="au-insights-rank-badge">Rank #${school.ranking}</div>`
-          : `<div class="au-insights-rank-none">Unranked</div>`;
-      }
-        
-      const assessedYear = school.assessedYear ? `Assessed ${school.assessedYear}` : 'No rating data';
-      const distanceText = school.distance ? ` • ${school.distance}km` : '';
-      
-      rowsHtml += `
-        <div class="au-insights-school-row">
-          <div class="au-insights-school-info">
-            <div class="au-insights-school-name">${school.name}</div>
-            <div class="au-insights-school-meta">
-              <span class="au-insights-school-type">${school.type}</span>
-              <span>${assessedYear}${distanceText}</span>
-            </div>
-          </div>
-          <div class="au-insights-rating-block">
-            ${ratingBadge}
-          </div>
-        </div>
-      `;
-    });
-    
-    schoolsHtml = `
-      <div class="au-insights-header" style="border-top: ${landSizeHtml ? 'none' : '1px solid transparent'}; border-bottom: none; margin-top: ${landSizeHtml ? '22px' : '0'}; padding-bottom: 0;">
-        <h3>School Catchment</h3>
-      </div>
-      ${rowsHtml}
-    `;
-  }
-
   container.innerHTML = `
     <div class="au-insights-header" style="background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%); border-bottom: 1px solid #e2e8f0; padding: 12px 16px; margin-left: -16px; margin-right: -16px; margin-top: -16px; border-top-left-radius: 12px; border-top-right-radius: 12px;">
       <h3 style="margin: 0; font-size: 14px; font-weight: 700; color: #0f172a;">Property Insights</h3>
     </div>
-    ${landSizeHtml}
-    ${schoolsHtml}
+    ${landSizeHtml || '<div style="padding: 16px 4px; color: #64748b; font-size: 13px;">Land size insights are disabled.</div>'}
   `;
 
   // Find injection target
