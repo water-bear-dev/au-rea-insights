@@ -1,4 +1,5 @@
 // Configuration
+const API_BASE_URL = 'http://localhost:3000'; // Change to your deployed URL (e.g., 'https://my-insights-app.onrender.com')
 const CACHE_PREFIX = 'insights_cache_v2_';
 const LEGACY_CACHE_PREFIX = 'insights_cache_';
 const INSIGHTS_DEBOUNCE_MS = 800;
@@ -63,7 +64,7 @@ function injectProxyWarning() {
   container.style.fontFamily = 'sans-serif';
   container.style.fontSize = '13px';
   container.style.fontWeight = '500';
-  container.innerHTML = '⚠️ Local proxy unavailable. Start the proxy server to load insights: `npm --prefix server run dev`.';
+  container.innerHTML = `⚠️ Insights proxy server unavailable. Make sure your server is online at: <code>${API_BASE_URL}</code>`;
   
   const featureGroup = findMainFeaturesContainer();
   if (featureGroup) {
@@ -228,9 +229,9 @@ async function fetchPropertyInsights(addressInfo, showLandSize) {
     
     try {
       let data = { landSize: 'Not available', landSizeMeta: { status: 'unverified', source: 'none', reason: 'default' } };
-      console.log('[AU Insights] Resolving insights via local proxy...');
-      const localCheck = await fetch('http://localhost:3000/health', { method: 'GET' });
-      if (!localCheck.ok) throw new Error('Local proxy not healthy');
+      console.log('[AU Insights] Resolving insights via proxy...');
+      const localCheck = await fetch(`${API_BASE_URL}/health`, { method: 'GET' });
+      if (!localCheck.ok) throw new Error('Proxy server not healthy');
       
       const params = new URLSearchParams();
       params.append('street', addressInfo.street);
@@ -239,7 +240,7 @@ async function fetchPropertyInsights(addressInfo, showLandSize) {
       params.append('postcode', addressInfo.postcode);
       params.append('url', window.location.href);
       
-      const response = await fetch(`http://localhost:3000/api/insights?${params.toString()}`);
+      const response = await fetch(`${API_BASE_URL}/api/insights?${params.toString()}`);
       if (!response.ok) throw new Error('Local insights fetch failed');
       const localData = await response.json();
       

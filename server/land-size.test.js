@@ -67,13 +67,14 @@ test('extractLandSizeFromHtml parses block size when value is split by tags', ()
   assert.equal(extractLandSizeFromHtml(html), '188m²');
 });
 
-test('resolveLandSizeStrict falls back from realestate to property.com.au', async () => {
+
+test('resolveLandSizeStrict falls back from allhomes to property.com.au', async () => {
   const calls = [];
   const sleepCalls = [];
   const fakeAxios = {
     get: async (url) => {
       calls.push(url);
-      if (url.includes('realestate.com.au')) {
+      if (url.includes('allhomes.com.au')) {
         return { data: '<html><body>No land size</body></html>' };
       }
       if (url.includes('property.com.au')) {
@@ -95,24 +96,24 @@ test('resolveLandSizeStrict falls back from realestate to property.com.au', asyn
   assert.equal(result.status, 'verified');
   assert.equal(result.value, '740m²');
   assert.equal(result.source, 'property_com_au_text');
-  assert.ok(calls.some(url => url.includes('realestate.com.au')));
+  assert.ok(calls.some(url => url.includes('allhomes.com.au')));
   assert.ok(calls.some(url => url.includes('property.com.au')));
   assert.deepEqual(sleepCalls, [5000]);
   assert.ok(Array.isArray(result.attempts));
   assert.equal(result.attempts.length, 2);
-  assert.equal(result.attempts[0].step, 'realestate.com.au');
+  assert.equal(result.attempts[0].step, 'allhomes.com.au');
   assert.equal(result.attempts[0].landSize, null);
   assert.equal(result.attempts[1].step, 'property.com.au');
   assert.equal(result.attempts[1].landSize, '740m²');
 });
 
-test('resolveLandSizeStrict falls back to allhomes when first two sources fail', async () => {
+test('resolveLandSizeStrict falls back to realestate when first two sources fail', async () => {
   const calls = [];
   const sleepCalls = [];
   const fakeAxios = {
     get: async (url) => {
       calls.push(url);
-      if (url.includes('allhomes.com.au')) {
+      if (url.includes('realestate.com.au')) {
         return { data: '<html><body>Land area 455 m2</body></html>' };
       }
       return { data: '<html><body>No structured value</body></html>' };
@@ -130,15 +131,15 @@ test('resolveLandSizeStrict falls back to allhomes when first two sources fail',
 
   assert.equal(result.status, 'verified');
   assert.equal(result.value, '455m²');
-  assert.equal(result.source, 'allhomes_text');
-  assert.ok(calls.some(url => url.includes('realestate.com.au')));
-  assert.ok(calls.some(url => url.includes('property.com.au')));
+  assert.equal(result.source, 'realestate_profile_text');
   assert.ok(calls.some(url => url.includes('allhomes.com.au')));
+  assert.ok(calls.some(url => url.includes('property.com.au')));
+  assert.ok(calls.some(url => url.includes('realestate.com.au')));
   assert.deepEqual(sleepCalls, [5000, 5000]);
   assert.ok(Array.isArray(result.attempts));
   assert.equal(result.attempts.length, 3);
-  assert.equal(result.attempts[0].step, 'realestate.com.au');
+  assert.equal(result.attempts[0].step, 'allhomes.com.au');
   assert.equal(result.attempts[1].step, 'property.com.au');
-  assert.equal(result.attempts[2].step, 'allhomes.com.au');
+  assert.equal(result.attempts[2].step, 'realestate.com.au');
   assert.equal(result.attempts[2].landSize, '455m²');
 });

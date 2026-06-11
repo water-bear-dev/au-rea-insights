@@ -411,19 +411,19 @@ async function resolveLandSizeStrict(address, options = {}) {
   const sleepFn = options.sleepFn || sleep;
   const attempts = [];
 
-  const profileResolution = await fetchLandSizeFromRealEstateProfile(
+  const allhomesResolution = await fetchLandSizeFromAllhomes(
     address.state,
     address.suburb,
     address.postcode,
     address.street,
     axiosInstance
   );
-  const profileAttempt = createLandSizeAttemptLog('realestate.com.au', profileResolution, 0);
-  attempts.push(profileAttempt);
-  console.log('[Proxy][LandSizeAttempt]', JSON.stringify(profileAttempt));
+  const allhomesAttempt = createLandSizeAttemptLog('allhomes.com.au', allhomesResolution, 0);
+  attempts.push(allhomesAttempt);
+  console.log('[Proxy][LandSizeAttempt]', JSON.stringify(allhomesAttempt));
 
-  if (profileResolution.status === 'verified' && profileResolution.value) {
-    return { ...profileResolution, attempts };
+  if (allhomesResolution.status === 'verified' && allhomesResolution.value) {
+    return { ...allhomesResolution, attempts };
   }
 
   if (waitMs > 0) {
@@ -446,30 +446,30 @@ async function resolveLandSizeStrict(address, options = {}) {
   }
 
   if (waitMs > 0) {
-    console.log(`[Proxy] Waiting ${waitMs}ms before allhomes.com.au fallback...`);
+    console.log(`[Proxy] Waiting ${waitMs}ms before realestate.com.au fallback...`);
     await sleepFn(waitMs);
   }
 
-  const allhomesResolution = await fetchLandSizeFromAllhomes(
+  const profileResolution = await fetchLandSizeFromRealEstateProfile(
     address.state,
     address.suburb,
     address.postcode,
     address.street,
     axiosInstance
   );
-  const allhomesAttempt = createLandSizeAttemptLog('allhomes.com.au', allhomesResolution, waitMs);
-  attempts.push(allhomesAttempt);
-  console.log('[Proxy][LandSizeAttempt]', JSON.stringify(allhomesAttempt));
-  if (allhomesResolution.status === 'verified' && allhomesResolution.value) {
-    return { ...allhomesResolution, attempts };
+  const profileAttempt = createLandSizeAttemptLog('realestate.com.au', profileResolution, waitMs);
+  attempts.push(profileAttempt);
+  console.log('[Proxy][LandSizeAttempt]', JSON.stringify(profileAttempt));
+  if (profileResolution.status === 'verified' && profileResolution.value) {
+    return { ...profileResolution, attempts };
   }
 
   return {
     ...createLandSizeResolution(
-    'unverified',
-    null,
-    allhomesResolution.source || propertyResolution.source || profileResolution.source,
-    allhomesResolution.reason || propertyResolution.reason || profileResolution.reason || 'verification_failed'
+      'unverified',
+      null,
+      profileResolution.source || propertyResolution.source || allhomesResolution.source,
+      profileResolution.reason || propertyResolution.reason || allhomesResolution.reason || 'verification_failed'
     ),
     attempts
   };
