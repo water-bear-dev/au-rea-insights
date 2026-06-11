@@ -648,14 +648,34 @@ app.get('/api/insights', async (req, res) => {
     return res.status(400).json({ error: 'Missing address components' });
   }
 
-  // Fetch land size (strict verified-only policy)
-  const landSizeResolution = await resolveLandSizeStrict(resolvedAddress);
+  // Geocode address to resolve latitude & longitude
+  const cleanStreet = resolvedAddress.street.replace(/^(\d+)\/(\d+)\s+/, '$2 ').trim();
+  const addressStr = `${cleanStreet}, ${resolvedAddress.suburb} ${resolvedAddress.state} ${resolvedAddress.postcode}`;
+  const coordinates = await geocodeAddress(addressStr);
+  const lat = coordinates ? coordinates.lat : null;
+  const lng = coordinates ? coordinates.lng : null;
+
+  // Fetch land size (strict verified-only policy, skipped if requested by extension)
+  let landSizeResolution = { status: 'unverified', value: null, attempts: [] };
+  if (req.query.skipLandSize !== 'true') {
+    landSizeResolution = await resolveLandSizeStrict(resolvedAddress);
+  }
+
+  // Fetch school catchments
+  const schools = await resolveCatchmentSchools(
+    resolvedAddress.state,
+    resolvedAddress.suburb,
+    lat,
+    lng
+  );
   
   res.json({
     address: resolvedAddress,
+    coordinates: coordinates ? { lat, lng } : null,
     landSize: landSizeResolution.status === 'verified' && landSizeResolution.value ? landSizeResolution.value : 'Not available',
     landSizeMeta: landSizeResolution,
-    landSizeLogs: Array.isArray(landSizeResolution.attempts) ? landSizeResolution.attempts : []
+    landSizeLogs: Array.isArray(landSizeResolution.attempts) ? landSizeResolution.attempts : [],
+    schools: schools
   });
 });
 

@@ -7,33 +7,34 @@ const inflightRequests = new Set();
 const lastFetchAtByKey = new Map();
 
 // Retrieve settings from storage
-chrome.storage.local.get(['showLandSize'], (result) => {
+chrome.storage.local.get(['showLandSize', 'showSchools'], (result) => {
   const showLandSize = result.showLandSize !== false;
+  const showSchools = result.showSchools !== false;
 
-  if (showLandSize) {
-    init(showLandSize);
+  if (showLandSize || showSchools) {
+    init(showLandSize, showSchools);
   }
 });
 
-function init(showLandSize) {
+function init(showLandSize, showSchools) {
   let lastUrl = location.href;
 
   // Initial check
-  checkPage(showLandSize);
+  checkPage(showLandSize, showSchools);
 
   // URL change observer (due to Single Page App transitions on REA/Domain)
   const observer = new MutationObserver(() => {
     if (location.href !== lastUrl) {
       lastUrl = location.href;
       // Wait briefly for new content to render
-      setTimeout(() => checkPage(showLandSize), 1000);
+      setTimeout(() => checkPage(showLandSize, showSchools), 1000);
     }
   });
 
   observer.observe(document.body, { childList: true, subtree: true });
 }
 
-function checkPage(showLandSize) {
+function checkPage(showLandSize, showSchools) {
   const isREA = document.querySelector('.property-info-address, h1.property-info-address, [data-testid="listing-address"]');
   const isDomain = document.querySelector('h1[data-testid="address-wrapper"], h1.css-72ndy');
   const isMock = window.location.pathname.includes('mock_pages.html');
@@ -48,7 +49,7 @@ function checkPage(showLandSize) {
   // Check if we already injected our content
   if (document.getElementById('au-insights-schools-section') || document.getElementById('au-insights-proxy-warning')) return;
 
-  fetchPropertyInsights(addressInfo, showLandSize);
+  fetchPropertyInsights(addressInfo, showLandSize, showSchools);
 }
 
 function injectProxyWarning() {
@@ -191,7 +192,7 @@ function getAddress() {
   };
 }
 
-async function fetchPropertyInsights(addressInfo, showLandSize) {
+async function fetchPropertyInsights(addressInfo, showLandSize, showSchools) {
   const addressKey = addressInfo.full || `${addressInfo.street}, ${addressInfo.suburb} ${addressInfo.state} ${addressInfo.postcode}`;
   const normalizedAddressKey = addressKey.toLowerCase().replace(/[^a-z0-9]/g, '_');
   const cacheKey = CACHE_PREFIX + normalizedAddressKey;
@@ -228,43 +229,82 @@ async function fetchPropertyInsights(addressInfo, showLandSize) {
     injectLoadingIndicator();
 
     try {
-      let data = { landSize: 'Not available', landSizeMeta: { status: 'unverified', source: 'none', reason: 'default' } };
-      console.log('[AU Insights] Resolving insights via proxy...');
-      const localCheck = await fetch(`${API_BASE_URL}/health`, { method: 'GET' });
-      if (!localCheck.ok) throw new Error('Proxy server not healthy');
+      // 1. Fetch land size from background service worker using residential IP
+      const fetchLandSizePromise = new Promise((resolve) => {
+        if (!showLandSize) {
+          return resolve({ status: 'unverified', value: null, attempts: [] });
+        }
+        chrome.runtime.sendMessage({
+          type: 'fetchLandSize',
+          address: addressInfo
+        }, (response) => {
+          if (response && response.success) {
+            resolve(response.result);
+          } else {
+            console.warn('[AU Insights] Background land size fetch failed:', response ? response.error : 'No response');
+            resolve({ status: 'unverified', value: null, attempts: [] });
+          }
+        });
+      });
 
-      const params = new URLSearchParams();
-      params.append('street', addressInfo.street);
-      params.append('suburb', addressInfo.suburb);
-      params.append('state', addressInfo.state);
-      params.append('postcode', addressInfo.postcode);
-      params.append('url', window.location.href);
+      // 2. Fetch school catchments from backend server proxy
+      const fetchSchoolsPromise = (async () => {
+        if (!showSchools) {
+          return { schools: [], error: false };
+        }
+        try {
+          const localCheck = await fetch(`${API_BASE_URL}/health`, { method: 'GET' });
+          if (!localCheck.ok) throw new Error('Proxy server not healthy');
 
-      const response = await fetch(`${API_BASE_URL}/api/insights?${params.toString()}`);
-      if (!response.ok) throw new Error('Local insights fetch failed');
-      const localData = await response.json();
+          const params = new URLSearchParams();
+          params.append('street', addressInfo.street);
+          params.append('suburb', addressInfo.suburb);
+          params.append('state', addressInfo.state);
+          params.append('postcode', addressInfo.postcode);
+          params.append('url', window.location.href);
+          params.append('skipLandSize', 'true');
 
-      data.landSizeMeta = localData.landSizeMeta || { status: 'unverified', source: 'proxy_unknown', reason: 'missing_meta' };
-      data.landSize = data.landSizeMeta.status === 'verified' ? (localData.landSize || 'Not available') : 'Not available';
-      if (Array.isArray(localData.landSizeLogs)) {
+          const response = await fetch(`${API_BASE_URL}/api/insights?${params.toString()}`);
+          if (!response.ok) throw new Error('Local insights fetch failed');
+          const localData = await response.json();
+          return localData;
+        } catch (error) {
+          console.warn('[AU Insights] Failed to fetch schools catchment from proxy:', error);
+          return { schools: [], error: true };
+        }
+      })();
+
+      // Run both in parallel
+      const [landSizeData, backendData] = await Promise.all([fetchLandSizePromise, fetchSchoolsPromise]);
+
+      if (landSizeData && Array.isArray(landSizeData.attempts)) {
         console.group('[AU Insights] Land size resolution attempts');
-        localData.landSizeLogs.forEach((attempt, index) => {
+        landSizeData.attempts.forEach((attempt, index) => {
           console.log(
             `#${index + 1} ${attempt.step} | status=${attempt.status} | landSize=${attempt.landSize || 'Not available'} | source=${attempt.source} | reason=${attempt.reason} | waitBeforeMs=${attempt.waitBeforeMs || 0}`
           );
         });
         console.groupEnd();
       }
-      console.log('[AU Insights] Successfully resolved insights from local proxy.');
+
+      const resolvedData = {
+        landSize: landSizeData.status === 'verified' ? (landSizeData.value || 'Not available') : 'Not available',
+        schools: backendData.schools || [],
+        landSizeMeta: landSizeData,
+        landSizeLogs: landSizeData.attempts || []
+      };
 
       // Save successfully resolved details to cache
-      if (data) {
-        const cacheData = {};
-        cacheData[cacheKey] = data;
-        chrome.storage.local.set(cacheData);
+      const cacheData = {};
+      cacheData[cacheKey] = resolvedData;
+      chrome.storage.local.set(cacheData);
 
-        removeLoadingIndicator();
-        injectInsightsPanel(data.landSize, showLandSize);
+      removeLoadingIndicator();
+      injectInsightsPanel(resolvedData.landSize, resolvedData.schools, showLandSize, showSchools);
+
+      // If backend was offline and schools requested, show a minor warning but do not crash
+      if (showSchools && backendData.error) {
+        injectProxyWarning();
       }
     } catch (error) {
       console.error('[AU Insights] Error resolving insights:', error);
@@ -337,7 +377,7 @@ function removeLoadingIndicator() {
   }
 }
 
-function injectInsightsPanel(landSize, showLandSize) {
+function injectInsightsPanel(landSize, schools, showLandSize, showSchools) {
   // Prevent duplicate injection
   if (document.getElementById('au-insights-schools-section')) return;
 
@@ -356,11 +396,54 @@ function injectInsightsPanel(landSize, showLandSize) {
     `;
   }
 
+  let schoolsHtml = '';
+  if (showSchools && schools && schools.length > 0) {
+    let rowsHtml = '';
+    schools.forEach(school => {
+      let ratingBadge = '';
+      if (school.type && school.type.toLowerCase() === 'primary') {
+        ratingBadge = school.score 
+          ? `<div class="au-insights-rank-badge" style="background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%); box-shadow: 0 2px 8px rgba(37, 99, 235, 0.15);">Score: ${school.score}</div>`
+          : `<div class="au-insights-rank-none">No Score</div>`;
+      } else {
+        ratingBadge = school.ranking 
+          ? `<div class="au-insights-rank-badge">Rank #${school.ranking}</div>`
+          : `<div class="au-insights-rank-none">Unranked</div>`;
+      }
+      
+      const assessedYear = school.assessedYear ? `Assessed ${school.assessedYear}` : 'No rating data';
+      const distanceText = school.distance ? ` • ${school.distance}km` : '';
+      
+      rowsHtml += `
+        <div class="au-insights-school-row">
+          <div class="au-insights-school-info">
+            <div class="au-insights-school-name">${school.name}</div>
+            <div class="au-insights-school-meta">
+              <span class="au-insights-school-type">${school.type}</span>
+              <span>${assessedYear}${distanceText}</span>
+            </div>
+          </div>
+          <div class="au-insights-rating-block">
+            ${ratingBadge}
+          </div>
+        </div>
+      `;
+    });
+    
+    schoolsHtml = `
+      <div class="au-insights-header" style="border-top: ${landSizeHtml ? 'none' : '1px solid transparent'}; border-bottom: none; margin-top: ${landSizeHtml ? '22px' : '0'}; padding-bottom: 0;">
+        <h3>School Catchment</h3>
+      </div>
+      ${rowsHtml}
+    `;
+  }
+
   container.innerHTML = `
     <div class="au-insights-header" style="background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%); border-bottom: 1px solid #e2e8f0; padding: 12px 16px; margin-left: -16px; margin-right: -16px; margin-top: -16px; border-top-left-radius: 12px; border-top-right-radius: 12px;">
       <h3 style="margin: 0; font-size: 14px; font-weight: 700; color: #0f172a;">Property Insights</h3>
     </div>
-    ${landSizeHtml || '<div style="padding: 16px 4px; color: #64748b; font-size: 13px;">Land size insights are disabled.</div>'}
+    ${landSizeHtml}
+    ${schoolsHtml}
   `;
 
   // Find injection target

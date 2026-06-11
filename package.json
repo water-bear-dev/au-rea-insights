@@ -7,5 +7,12 @@
     "test": "npm --prefix server test",
     "dev": "npm --prefix server run dev",
     "scrape": "node server/scripts/update_schools_db.js"
+  },
+  "dependencies": {
+    "axios": "^1.6.8",
+    "cheerio": "^1.0.0-rc.12",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2"
   }
 }
