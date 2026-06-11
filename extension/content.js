@@ -1,5 +1,5 @@
 // Configuration
-const API_BASE_URL = 'http://localhost:3000'; // Change to your deployed URL (e.g., 'https://my-insights-app.onrender.com')
+const API_BASE_URL = 'https://au-real-estate-insights-proxy.onrender.com'; // Change to your deployed URL (e.g., 'https://my-insights-app.onrender.com')
 const CACHE_PREFIX = 'insights_cache_v2_';
 const LEGACY_CACHE_PREFIX = 'insights_cache_';
 const INSIGHTS_DEBOUNCE_MS = 800;
@@ -9,7 +9,7 @@ const lastFetchAtByKey = new Map();
 // Retrieve settings from storage
 chrome.storage.local.get(['showLandSize'], (result) => {
   const showLandSize = result.showLandSize !== false;
-  
+
   if (showLandSize) {
     init(showLandSize);
   }
@@ -17,10 +17,10 @@ chrome.storage.local.get(['showLandSize'], (result) => {
 
 function init(showLandSize) {
   let lastUrl = location.href;
-  
+
   // Initial check
   checkPage(showLandSize);
-  
+
   // URL change observer (due to Single Page App transitions on REA/Domain)
   const observer = new MutationObserver(() => {
     if (location.href !== lastUrl) {
@@ -29,7 +29,7 @@ function init(showLandSize) {
       setTimeout(() => checkPage(showLandSize), 1000);
     }
   });
-  
+
   observer.observe(document.body, { childList: true, subtree: true });
 }
 
@@ -37,14 +37,14 @@ function checkPage(showLandSize) {
   const isREA = document.querySelector('.property-info-address, h1.property-info-address, [data-testid="listing-address"]');
   const isDomain = document.querySelector('h1[data-testid="address-wrapper"], h1.css-72ndy');
   const isMock = window.location.pathname.includes('mock_pages.html');
-  
+
   if (!isREA && !isDomain && !isMock) return;
-  
+
   const addressInfo = getAddress();
   if (!addressInfo) return;
-  
+
   console.log('[AU Insights] Address detected:', addressInfo);
-  
+
   // Check if we already injected our content
   if (document.getElementById('au-insights-schools-section') || document.getElementById('au-insights-proxy-warning')) return;
 
@@ -65,7 +65,7 @@ function injectProxyWarning() {
   container.style.fontSize = '13px';
   container.style.fontWeight = '500';
   container.innerHTML = `⚠️ Insights proxy server unavailable. Make sure your server is online at: <code>${API_BASE_URL}</code>`;
-  
+
   const featureGroup = findMainFeaturesContainer();
   if (featureGroup) {
     featureGroup.parentNode.insertBefore(container, featureGroup.nextSibling);
@@ -79,18 +79,18 @@ function getMainListingDetailsContainer() {
 
 function findMainFeaturesContainer() {
   const mainCol = getMainListingDetailsContainer();
-  
+
   // Exclude actual header / nav / sticky / breadcrumb wrappers precisely
   const isIgnored = (el) => {
-    return el.closest('header') || 
-           el.closest('nav') ||
-           el.closest('.sticky-header') ||
-           el.closest('.property-info-sticky') ||
-           el.closest('[data-testid="sticky-header"]') ||
-           el.closest('.breadcrumbs') ||
-           el.closest('[class*="breadcrumbs"]') ||
-           el.closest('.sub-header-container') ||
-           el.closest('.top-bar');
+    return el.closest('header') ||
+      el.closest('nav') ||
+      el.closest('.sticky-header') ||
+      el.closest('.property-info-sticky') ||
+      el.closest('[data-testid="sticky-header"]') ||
+      el.closest('.breadcrumbs') ||
+      el.closest('[class*="breadcrumbs"]') ||
+      el.closest('.sub-header-container') ||
+      el.closest('.top-bar');
   };
 
   // 1. Target specific main details columns first
@@ -98,12 +98,12 @@ function findMainFeaturesContainer() {
   if (mainREAGroup && !isIgnored(mainREAGroup)) {
     return mainREAGroup;
   }
-  
+
   const mainDomainGroup = mainCol.querySelector('.css-1h998q [data-testid="property-features"], .css-b1s6i8 [data-testid="property-features"]');
   if (mainDomainGroup && !isIgnored(mainDomainGroup)) {
     return mainDomainGroup;
   }
-  
+
   // 2. Generic lookup excluding headers, navs, stickies, sub-headers, and breadcrumbs
   const featureGroups = mainCol.querySelectorAll('.property-info__feature-group, [data-testid="property-features"]');
   for (const group of featureGroups) {
@@ -112,17 +112,17 @@ function findMainFeaturesContainer() {
     }
     return group; // return the first clean one
   }
-  
+
   return null;
 }
 
 function getAddress() {
   const mainCol = getMainListingDetailsContainer();
   let addressText = '';
-  
+
   const reaEl = mainCol.querySelector('.property-info-address, h1.property-info-address, [data-testid="listing-address"]');
   const domainEl = mainCol.querySelector('h1[data-testid="address-wrapper"], h1.css-72ndy');
-  
+
   if (reaEl) {
     addressText = reaEl.textContent.trim();
   } else if (domainEl) {
@@ -134,24 +134,24 @@ function getAddress() {
       addressText = h1.textContent.trim();
     }
   }
-  
+
   if (!addressText) return null;
-  
+
   // Normalise spaces
   addressText = addressText.replace(/\s+/g, ' ');
-  
+
   // Clean address
   const regex = /(.*?),\s*(.*?)\s+(VIC|NSW|QLD|WA|SA|TAS|ACT|NT)\s+(\d{4})/i;
   const match = addressText.match(regex);
-  
+
   if (match) {
     let street = match[1].trim();
     let suburb = match[2].trim();
-    
+
     // Clean trailing commas
     while (suburb.endsWith(',')) suburb = suburb.slice(0, -1).trim();
     while (street.endsWith(',')) street = street.slice(0, -1).trim();
-    
+
     return {
       full: addressText,
       street: street,
@@ -160,22 +160,22 @@ function getAddress() {
       postcode: match[4].trim()
     };
   }
-  
+
   // Loose pattern: no comma
   const regexLoose = /(.*?)\s+(VIC|NSW|QLD|WA|SA|TAS|ACT|NT)\s+(\d{4})/i;
   const matchLoose = addressText.match(regexLoose);
-  
+
   if (matchLoose) {
     const parts = matchLoose[1].split(' ');
     const postcode = matchLoose[3];
     const state = matchLoose[2].toUpperCase();
-    
+
     let street = parts.slice(0, -2).join(' ').trim();
     let suburb = parts.slice(-2).join(' ').trim();
-    
+
     while (suburb.endsWith(',')) suburb = suburb.slice(0, -1).trim();
     while (street.endsWith(',')) street = street.slice(0, -1).trim();
-    
+
     return {
       full: addressText,
       street: street,
@@ -184,7 +184,7 @@ function getAddress() {
       postcode: postcode
     };
   }
-  
+
   return {
     full: addressText,
     raw: true
@@ -207,7 +207,7 @@ async function fetchPropertyInsights(addressInfo, showLandSize) {
     return;
   }
   lastFetchAtByKey.set(cacheKey, now);
-  
+
   // Check Chrome Storage Local Cache
   chrome.storage.local.get([cacheKey, legacyCacheKey], async (cacheResult) => {
     // Remove stale cache entries from previous schema version.
@@ -221,29 +221,29 @@ async function fetchPropertyInsights(addressInfo, showLandSize) {
       injectInsightsPanel(data.landSize, data.schools, showLandSize, showSchools);
       return;
     }
-    
+
     // Cache miss -> show spinner loading state
     console.log('[AU Insights] Cache miss. Initiating fetch...');
     inflightRequests.add(cacheKey);
     injectLoadingIndicator();
-    
+
     try {
       let data = { landSize: 'Not available', landSizeMeta: { status: 'unverified', source: 'none', reason: 'default' } };
       console.log('[AU Insights] Resolving insights via proxy...');
       const localCheck = await fetch(`${API_BASE_URL}/health`, { method: 'GET' });
       if (!localCheck.ok) throw new Error('Proxy server not healthy');
-      
+
       const params = new URLSearchParams();
       params.append('street', addressInfo.street);
       params.append('suburb', addressInfo.suburb);
       params.append('state', addressInfo.state);
       params.append('postcode', addressInfo.postcode);
       params.append('url', window.location.href);
-      
+
       const response = await fetch(`${API_BASE_URL}/api/insights?${params.toString()}`);
       if (!response.ok) throw new Error('Local insights fetch failed');
       const localData = await response.json();
-      
+
       data.landSizeMeta = localData.landSizeMeta || { status: 'unverified', source: 'proxy_unknown', reason: 'missing_meta' };
       data.landSize = data.landSizeMeta.status === 'verified' ? (localData.landSize || 'Not available') : 'Not available';
       if (Array.isArray(localData.landSizeLogs)) {
@@ -256,13 +256,13 @@ async function fetchPropertyInsights(addressInfo, showLandSize) {
         console.groupEnd();
       }
       console.log('[AU Insights] Successfully resolved insights from local proxy.');
-      
+
       // Save successfully resolved details to cache
       if (data) {
         const cacheData = {};
         cacheData[cacheKey] = data;
         chrome.storage.local.set(cacheData);
-        
+
         removeLoadingIndicator();
         injectInsightsPanel(data.landSize, showLandSize);
       }
@@ -313,7 +313,7 @@ function injectLoadingIndicator() {
     }
   }, 1000);
   container.dataset.timerId = String(intervalId);
-  
+
   const featureGroup = findMainFeaturesContainer();
   if (featureGroup) {
     const parent = featureGroup.parentElement;
@@ -368,7 +368,7 @@ function injectInsightsPanel(landSize, showLandSize) {
   if (featureGroup) {
     const parent = featureGroup.parentElement;
     const parentStyle = window.getComputedStyle(parent);
-    
+
     // If the parent of the features group is a flex row, insert after the parent to avoid squeeze/overlap
     if (parentStyle.display === 'flex' && parentStyle.flexDirection === 'row') {
       parent.parentNode.insertBefore(container, parent.nextSibling);
