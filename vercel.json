@@ -8,7 +8,10 @@
   ],
   "functions": {
     "api/index.js": {
-      "includeFiles": "server/data/school-zones/**"
+      "includeFiles": [
+        "server/data/school-zones/**",
+        "server/schools_db.json"
+      ]
     }
   }
 }
