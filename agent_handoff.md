@@ -1,72 +1,55 @@
 # Agent Handoff: AU Real Estate Insights
 
-This handoff summarizes the latest production-oriented state after architecture, parser hardening, and school database consistency updates.
+This handoff summarizes the latest production-oriented state after implementing the unified offline school zones compilation and backend catchment checks.
 
 ## 1) Current Architecture (Important)
 
-- Extension (`extension/content.js`) is now proxy-only for data retrieval.
-- Local backend (`server/index.js`) handles land size + schools resolution.
-- Popup key input has been completely removed from the extension interface.
+- **Extension Service Worker (`extension/background.js`)**: Executes client-side background scraping of land sizes using the user's residential IP to bypass datacenter blocks (403 Forbidden errors).
+- **Content Script (`extension/content.js`)**: Scrapes listing details, triggers background land size scraping and backend school lookup, and renders the insights card UI.
+- **Serverless Backend (`server/index.js` / Vercel)**: Geocodes addresses and runs offline local spatial lookups using the compiled school zones in `server/data/school-zones/`.
 
 ## 2) Land Size Resolution Policy
 
-- Display policy remains strict: numeric land size is shown only for `verified` results.
-- Fallback chain in order:
-  1. `realestate.com.au`
-  2. `property.com.au`
-  3. `allhomes.com.au`
-- There is a 5-second wait before each fallback source attempt.
+- **Verified Only**: Only land sizes matching clean patterns are displayed.
+- **Fallback Chain**: `allhomes.com.au` -> `property.com.au` -> `realestate.com.au` (with 5-second wait intervals).
 
-## 3) Logging and Debug Signals
+## 3) Offline School Catchment Resolution
 
-- Proxy returns:
-  - `landSizeMeta`
-  - `landSizeLogs` (step-by-step source attempts)
-- Proxy logs each step to terminal:
-  - `[Proxy][LandSizeAttempt] {...}`
-- Extension console prints grouped attempt logs:
-  - `[AU Insights] Land size resolution attempts`
-- Server console logs resolved school statistics when catchment is requested:
-  - `[School Lookup] Resolved Primary School: <name>, State Overall Score: <score>`
-  - `[School Lookup] Resolved Secondary College: <name>, Ranking: <ranking>`
+- **Compiled States**: All 8 states and territories (ACT, NSW, NT, QLD, SA, TAS, VIC, WA) are fully compiled into unified GeoJSON files:
+  - `server/data/school-zones/<state>_primary.json`
+  - `server/data/school-zones/<state>_secondary.json`
+- **Data Source Formats**:
+  - **VIC**: Parsed from original GeoJSON boundary sets.
+  - **NSW, SA, TAS**: Parsed from shapefiles using `pyshp`.
+  - **QLD**: Parsed from local KML datasets.
+  - **ACT**: CSV priority enrolment areas parsed from WKT strings.
+  - **WA**: Excel active schools compiled into Point coordinates.
+  - **NT**: Automatically downloaded and parsed from the user-provided Google My Maps embed URLs.
+- **Spatial Lookup Strategy**:
+  1. Check if the property coordinates fall inside any defined zone polygon (Polygon or MultiPolygon with hole handling).
+  2. If not contained (or point-only like WA), calculate geodetic Haversine distance to all schools in the state's dataset using their centroids/points and select the closest one.
+- **Ratings Matcher**: Matches name against the local rankings database (`schools_db.json`).
+- **Limit**: Returns exactly 1 closest primary school and 1 closest secondary school.
 
-## 4) Recent Reliability & UX Improvements
+## 4) Preprocessing Pipeline
 
-- Removed browser-direct Gemini API path and server-side fallback completely to prevent key exposure and unnecessary dependencies.
-- Added dedupe + debounce in extension request flow to reduce duplicate calls.
-- Switched Allhomes fallback URL to direct property slug form.
-- Hardened land-size parser to handle `approx` and tag-split values.
-- Replaced the extension loading indicator with a robust **SMIL-animated inline SVG spinner** to ensure the animation always spins smoothly on all host sites.
-- Re-styled the insights panel rows with flex gaps, `min-width` bounds, and non-shrinkable badges (`flex-shrink: 0`) to prevent school name text from touching or overlapping the ranking badges.
+- Run the data pipeline script:
+  ```bash
+  python3 server/scripts/process_zones.py
+  ```
+  This script downloads NT maps, converts TAS projections from MGA Zone 55 to EPSG:4326, simplifies shapes to `0.0002` degrees, calculates centroids, and outputs unified GeoJSON files.
 
 ## 5) Validation Snapshot
 
-- Server tests currently pass (`npm --prefix server test`).
-- Coverage includes:
-  - fallback ordering
-  - fallback delay behavior
-  - Allhomes slug URL generation
-  - `approx` and tag-split parser cases
-  - point-in-polygon lookup, geodetic distance calculation, and spatial school mapping (including Sandringham College VIC boundary checks)
+- All 14 backend unit tests pass successfully (`npm test` in the `server` directory).
+- Coverage checks:
+  - Land size fallback ordering and parsing.
+  - Spatial MultiPolygon catchment checks in VIC.
+  - Point-only nearest school lookups in WA.
+  - Missing coordinates suburb matching fallback.
 
-## 6) Geospatial School Catchments & Database Consistency
+## 6) Guardrails
 
-- Zoned catchments are resolved offline for both primary and secondary schools by comparing property coordinates to simplified GeoJSON boundary files (located in `server/data/school-zones/`).
-- Sandringham and Cheltenham support: Sandringham College, Cheltenham Primary School, and Cheltenham Secondary College have been configured in `schools_db.json`, and their boundaries have been added to `vic_primary.json` and `vic_secondary.json` to enable catchment mapping.
-- Geocoding address clean: The proxy cleans unit prefixes (e.g. `75/310` -> `310`) prior to geocoding, improving Nominatim's accuracy.
-- Top Schools Scraper: The `update_schools_db.js` scraper script has been updated to parse Better Education's "Top Schools" lists directly from server-side HTML. It treats `schools_db.json` as a real database, appending newly discovered schools (supporting suburb/postcode and sector fields), and runs with a 10-second delay between requests to avoid rate limits (`429`).
-- **School database consistency**: All Victorian public secondary colleges in `schools_db.json` have been re-ranked using their **overall state-wide Better Education Ranks** (e.g. Balwyn High School #53, Glen Waverley #64, Mount Waverley #125, Brighton Secondary College #158) rather than public-only ranks to ensure consistency with independent and selective schools.
-- Distance calculations use the Haversine formula.
-
-## 7) Operational Notes for Next Agent
-
-1. Ensure server is running before testing extension:
-   - `npm --prefix server run dev`
-2. If results look stale, clear extension cache from popup.
-3. Keep strict verified-only display behavior intact.
-
-## 8) Guardrails
-
-- Do not add hardcoded address overrides.
-- Do not make geocoding requests without a valid custom User-Agent header.
-- Ensure that school rankings continue to align with the overall state-wide ranking standard (not public-only ranks).
+- **Do not make Nominatim geocoding requests without a valid custom User-Agent header**.
+- **Keep geometry simplification intact** (tolerance `0.0002`) to prevent serverless function payload limits from being exceeded.
+- **Ensure school ratings continue to align with the overall state-wide rankings**.

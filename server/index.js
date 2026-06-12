@@ -80,23 +80,81 @@ function isPointInPolygon(point, polygon) {
   return inside;
 }
 
-// Spatial lookup to find zoned school name
+// Check if point is inside a GeoJSON Polygon/MultiPolygon geometry (accounting for holes)
+function isPointInGeoJsonGeometry(point, geometry) {
+  if (!geometry) return false;
+  
+  if (geometry.type === 'Polygon') {
+    const coords = geometry.coordinates;
+    if (!coords || coords.length === 0) return false;
+    if (!isPointInPolygon(point, coords[0])) return false;
+    for (let i = 1; i < coords.length; i++) {
+      if (isPointInPolygon(point, coords[i])) return false;
+    }
+    return true;
+  } 
+  
+  if (geometry.type === 'MultiPolygon') {
+    const coords = geometry.coordinates;
+    if (!coords) return false;
+    for (const polygonCoords of coords) {
+      if (polygonCoords.length === 0) continue;
+      let insidePoly = isPointInPolygon(point, polygonCoords[0]);
+      if (insidePoly) {
+        let insideHole = false;
+        for (let i = 1; i < polygonCoords.length; i++) {
+          if (isPointInPolygon(point, polygonCoords[i])) {
+            insideHole = true;
+            break;
+          }
+        }
+        if (!insideHole) return true;
+      }
+    }
+    return false;
+  }
+  
+  return false;
+}
+
+// Spatial lookup to find zoned school name and distance
 function findSchoolBySpatialLookup(lat, lng, state, schoolType) {
   const geojson = getBoundaryGeoJson(state, schoolType);
-  if (!geojson || !geojson.features) return null;
+  if (!geojson || !geojson.features || geojson.features.length === 0) return null;
+  
   const point = [lng, lat];
+  
+  // 1. Try to find containment in Polygon/MultiPolygon features
   for (const feature of geojson.features) {
-    if (feature.properties && feature.properties.state.toUpperCase() === String(state).toUpperCase()) {
-      const coords = feature.geometry.coordinates;
-      if (coords && coords[0]) {
-        const exteriorRing = coords[0];
-        if (isPointInPolygon(point, exteriorRing)) {
-          return feature.properties.schoolName;
-        }
+    if (feature.geometry.type === 'Polygon' || feature.geometry.type === 'MultiPolygon') {
+      if (isPointInGeoJsonGeometry(point, feature.geometry)) {
+        return {
+          name: feature.properties.schoolName,
+          distance: 0.1 // inside polygon means we are in the catchment
+        };
       }
     }
   }
-  return null;
+  
+  // 2. Fallback: Find nearest school by distance to centroid / point coordinate
+  let minDistance = Infinity;
+  let nearestSchool = null;
+  
+  for (const feature of geojson.features) {
+    const coord = feature.properties.centroid || (feature.geometry.type === 'Point' ? feature.geometry.coordinates : null);
+    if (coord) {
+      const dist = calculateDistance(lat, lng, coord[1], coord[0]);
+      if (dist < minDistance) {
+        minDistance = dist;
+        nearestSchool = {
+          name: feature.properties.schoolName,
+          distance: dist
+        };
+      }
+    }
+  }
+  
+  return nearestSchool;
 }
 
 // Haversine distance calculator
@@ -512,78 +570,46 @@ function isSchoolNameMatch(osmName, dbName) {
 }
 
 // Resolve schools for catchment
+// Resolve schools for catchment
 async function resolveCatchmentSchools(state, suburb, latitude, longitude) {
   const stateSchools = schoolsDb[state] || [];
   const resolved = [];
 
   if (typeof latitude === 'number' && typeof longitude === 'number') {
-    try {
-      console.log(`[School Lookup] Querying Nominatim for schools near: ${latitude}, ${longitude}`);
-      const viewboxOffset = 0.04; // ~4.4km bounding box
-      const left = longitude - viewboxOffset;
-      const right = longitude + viewboxOffset;
-      const top = latitude + viewboxOffset;
-      const bottom = latitude - viewboxOffset;
-      
-      const url = `https://nominatim.openstreetmap.org/search?q=school&format=json&limit=25&bounded=1&viewbox=${left},${top},${right},${bottom}`;
-      const response = await axios.get(url, {
-        headers: { 'User-Agent': 'MyAppUserAgent/1.0' },
-        timeout: 5000
+    // 1. Resolve Primary School
+    const primaryLookup = findSchoolBySpatialLookup(latitude, longitude, state, 'Primary');
+    if (primaryLookup) {
+      const bestMatch = findBestSchoolMatch(stateSchools, primaryLookup.name, 'Primary');
+      resolved.push({
+        name: bestMatch ? bestMatch.name : primaryLookup.name,
+        type: 'Primary',
+        ranking: bestMatch ? bestMatch.ranking : null,
+        score: bestMatch ? bestMatch.score : null,
+        assessedYear: bestMatch ? bestMatch.assessedYear : null,
+        sector: bestMatch ? bestMatch.sector : 'Government',
+        distance: primaryLookup.distance
       });
-      
-      if (response.data && Array.isArray(response.data)) {
-        const primaryCandidates = [];
-        const secondaryCandidates = [];
-        
-        for (const osmSchool of response.data) {
-          const osmName = osmSchool.name || osmSchool.display_name;
-          if (!osmName) continue;
-          
-          const dbSchool = stateSchools.find(s => isSchoolNameMatch(osmName, s.name));
-          if (dbSchool) {
-            const bestMatch = findBestSchoolMatch(stateSchools, dbSchool.name, dbSchool.type);
-            if (bestMatch) {
-              const latVal = parseFloat(osmSchool.lat);
-              const lngVal = parseFloat(osmSchool.lon);
-              const dist = calculateDistance(latitude, longitude, latVal, lngVal);
-              
-              const candidate = {
-                name: bestMatch.name,
-                type: bestMatch.type,
-                ranking: bestMatch.ranking,
-                score: bestMatch.score,
-                assessedYear: bestMatch.assessedYear,
-                sector: bestMatch.sector,
-                distance: dist
-              };
-              
-              if (bestMatch.type === 'Primary') {
-                if (!primaryCandidates.some(c => c.name.toLowerCase() === candidate.name.toLowerCase())) {
-                  primaryCandidates.push(candidate);
-                }
-              } else {
-                if (!secondaryCandidates.some(c => c.name.toLowerCase() === candidate.name.toLowerCase())) {
-                  secondaryCandidates.push(candidate);
-                }
-              }
-            }
-          }
-        }
-        
-        primaryCandidates.sort((a, b) => a.distance - b.distance);
-        secondaryCandidates.sort((a, b) => a.distance - b.distance);
-        
-        if (primaryCandidates.length > 0) resolved.push(primaryCandidates[0]);
-        if (secondaryCandidates.length > 0) resolved.push(secondaryCandidates[0]);
-      }
-    } catch (e) {
-      console.warn(`[School Lookup] Nominatim nearby school search failed: ${e.message}`);
+    }
+
+    // 2. Resolve Secondary School
+    const secondaryLookup = findSchoolBySpatialLookup(latitude, longitude, state, 'Secondary');
+    if (secondaryLookup) {
+      const bestMatch = findBestSchoolMatch(stateSchools, secondaryLookup.name, 'Secondary');
+      resolved.push({
+        name: bestMatch ? bestMatch.name : secondaryLookup.name,
+        type: 'Secondary',
+        ranking: bestMatch ? bestMatch.ranking : null,
+        score: bestMatch ? bestMatch.score : null,
+        assessedYear: bestMatch ? bestMatch.assessedYear : null,
+        sector: bestMatch ? bestMatch.sector : 'Government',
+        distance: secondaryLookup.distance
+      });
     }
   }
 
-  // If Nominatim search failed or returned no matches, fallback to searching by suburb name in database
+  // If spatial lookup returned nothing, fallback to searching by suburb name in database
   if (resolved.length === 0 && suburb) {
-    console.log(`[School Lookup] Falling back to suburb matching for ${suburb}...`);
+    console.log(`[School Lookup] Spatial lookup found nothing. Falling back to suburb matching for ${suburb}...`);
     const primaryInSuburb = [];
     const secondaryInSuburb = [];
     

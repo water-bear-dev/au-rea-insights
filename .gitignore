@@ -1,3 +1,4 @@
 server/.env
 .cursor/
+source_files/
 agent_handoff.md

@@ -1,53 +1,44 @@
 # AU Real Estate Insights
 
-Chrome extension + local proxy server that enriches listings on `realestate.com.au` and `domain.com.au` with:
+Chrome extension + server backend that enriches listings on `realestate.com.au` and `domain.com.au` with:
 
-- verified land size (strict source policy)
-- local primary and secondary school catchment zones resolved via geospatial boundaries
+- verified land size (strict source policy, scraped locally)
+- local primary and secondary schools resolved via nearby coordinate-radius search
 - official Better Education school rating and ranking metadata
 
 ## Current Architecture
 
-The project is now **proxy-first**:
+The project uses a **hybrid architecture** to bypass anti-scraping blocks:
 
-- Extension (`extension/content.js`) calls only `http://localhost:3000/api/insights`
-- Server (`server/index.js`) performs data resolution
-
-This avoids direct cross-origin fetches in the browser.
+- **Extension Background Service Worker (`extension/background.js`)**: Executes the HTTP requests to scrape land sizes (Allhomes, Property.com.au, Realestate.com.au) using the **user's residential IP address**. This avoids the `403 Forbidden` errors triggered when cloud datacenter IPs attempt to scrape real estate platforms.
+- **Serverless Backend Server (`server/index.js` / Vercel)**: Handles coordinate geocoding (via Nominatim) and school catchment matches using offline state-specific zone files compiled in `server/data/school-zones/`.
 
 ## Key Behaviors
 
-- Land size is shown only when status is `verified`
-- Fallback order for land size:
-  1. `realestate.com.au`
+- **Land Size Scraping**: Done client-side in the extension background script.
+- **Land Size Fallback Order**:
+  1. `allhomes.com.au`
   2. `property.com.au`
-  3. `allhomes.com.au` (direct property slug URL)
-- 5-second wait is applied before each fallback step
-- School catchments (both Primary and Secondary) are matched using geospatial coordinates against local boundary polygons (ray-casting Point-in-Polygon).
-- Addresses are geocoded using OpenStreetMap Nominatim.
-- Zoned school distance is calculated using the geodetic Haversine formula.
-- School rankings consistently use the overall state-wide Better Education Ranks (which compare all public, private, and independent schools) rather than public-only ranks.
-- Server returns `landSizeLogs` with per-source attempt details.
-- Extension prints attempt logs in browser console for debugging.
-- Extension loading UI features a robust native SMIL-animated SVG spinner to ensure animation works reliably on host pages.
-- Request dedupe/debounce reduces duplicate calls on SPA navigation.
+  3. `realestate.com.au`
+- **Wait Delays**: A 5-second wait is applied between fallback attempts.
+- **Offline School Catchment Search**: Resolves catchment zones using high-performance local spatial calculations. It checks polygon containment first, falling back to geodetic nearest-neighbor calculations (for point-only locations like WA, or properties outside defined boundaries). Matches results against the Better Education rankings database (`schools_db.json`).
+- **1 Primary, 1 Secondary constraint**: The card lists at most the 1 closest primary school and 1 closest secondary school.
+- **Vercel Serverless Support**: Configured for instant deployment to Vercel as Serverless Functions (`vercel.json` + `api/index.js`).
 
 ## Project Structure
 
 ```text
 au-rea-insights/
+├── api/
+│   └── index.js
 ├── extension/
 │   ├── manifest.json
+│   ├── background.js
 │   ├── content.js
 │   ├── content.css
 │   ├── popup.html
 │   └── popup.js
 ├── server/
-│   ├── data/
-│   │   └── school-zones/
-│   │       ├── vic_primary.json
-│   │       ├── vic_secondary.json
-│   │       └── nsw_primary.json
 │   ├── scripts/
 │   │   └── update_schools_db.js
 │   ├── index.js
@@ -56,6 +47,8 @@ au-rea-insights/
 │   └── package.json
 ├── tests/
 │   └── mock_pages.html
+├── vercel.json
+├── package.json
 ├── CHANGELOG.md
 └── agent_handoff.md
 ```

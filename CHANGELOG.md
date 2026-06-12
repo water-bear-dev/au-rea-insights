@@ -4,20 +4,38 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-06-12
+
+### Added
+- Added Python data pipeline script `process_zones.py` to compile and unify all state-specific raw school boundaries and locations from `source_files/` (covering VIC, NSW, QLD, SA, TAS, ACT, WA, NT).
+- Added automatic KMZ/KML downloading and parsing from Google My Maps URLs for Northern Territory (NT) school catchments.
+- Added MGA Zone 55 coordinate reprojection (EPSG:28355 -> EPSG:4326) for Tasmanian intake area boundaries using the `pyproj` library.
+- Added geometry simplification (0.0002 degrees tolerance) and centroid coordinate calculation to maintain small GeoJSON file sizes.
+- Added local MultiPolygon containment checks (`isPointInGeoJsonGeometry`) in `server/index.js` supporting holes.
+- Added nearest-distance fallback using computed centroids for properties outside defined polygon areas or for states with point-only data (like WA).
+
 ### Changed
-- Updated the land size fallback resolution chain (`resolveLandSizeStrict`) to check `realestate.com.au`, `property.com.au`, and `allhomes.com.au` without falling back to Gemini.
-- Removed Gemini-related unit tests and parameters.
-- Updated the school ratings database scraper script (`update_schools_db.js`) to target Better Education's "Top Schools" pages, enabling direct server-side HTML parsing.
-- Configured the scraper to treat `schools_db.json` as a real database, appending newly scraped schools if they do not exist, and parsing their suburb and sector values.
-- Added 10-second delays between scrapings in `update_schools_db.js` to prevent `429` rate limiting.
-- Expanded school catchment Mock boundaries in `vic_primary.json` and `vic_secondary.json` and added `Cheltenham Primary School` and `Cheltenham Secondary College` to the database to support Cheltenham listings.
-- Modified proxy address geocoding to clean unit prefix numbers before geocoding, improving Nominatim location accuracy.
-- Enhanced the Allhomes URL generator to support unit number prefix slugs (e.g. `unit-75-310-` prefixes).
+- Migrated backend school catchment resolution from Nominatim API bounding-box queries back to local, high-performance offline spatial checks.
+- Updated backend unit tests to verify containment and fallback lookup results across multiple states.
+
+## [0.3.0] - 2026-06-12
+
+### Added
+- Added client-side background scraping of land size in extension background service worker (`background.js`) to bypass proxy/cloud hosting `403 Forbidden` response blocks (e.g., from Render/AWS).
+- Added fallback order sequence in background script: `allhomes.com.au` -> `property.com.au` -> `realestate.com.au` with a 5-second sleep duration between fallback queries.
+- Added dynamic coordinate-radius school catchment resolution on the backend using Nominatim's radius boundary search (~4.4km bounding box) instead of offline GeoJSON polygon files.
+- Added a flexible name-cleaning matcher helper on the backend to match Nominatim geolocated school results against the local `schools_db.json` ratings database.
+- Added Vercel Serverless Function deployment support via a root `vercel.json`, `api/index.js` wrapper, and root `package.json` proxy configuration.
+
+### Changed
+- Shifted the scraping duties from the Node.js backend to the client extension's background service worker (`background.js`) to ensure requests originate from the user's residential IP.
+- Rewrote backend catchment lookup (`resolveCatchmentSchools`) to perform dynamic coordinate-radius bounding box searches to support all of Australia location-agnostically (including TAS, NT, ACT).
+- Constrained school lookup returns to exactly 1 closest primary school and 1 closest secondary school.
 
 ### Removed
-- Removed Gemini fallback logic, retry functions, and exports from the local proxy server.
-- Removed `GEMINI_API_KEY` configuration from the backend proxy environment settings (`server/.env`).
-- Removed unused CSS rules for `.api-key-input` and `.save-status` from the Chrome extension `popup.html`.
+- Removed the offline GeoJSON boundary files (`server/data/school-zones/`) entirely.
+- Removed mock polygon boundary-checking dependencies and offline point-in-polygon logic.
+
 
 ## [0.2.1] - 2026-06-09
 
