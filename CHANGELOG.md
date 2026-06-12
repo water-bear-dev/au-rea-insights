@@ -15,10 +15,12 @@ All notable changes to this project are documented in this file.
 - Added nearest-distance fallback using computed centroids for properties outside defined polygon areas or for states with point-only data (like WA).
 - Added `getRootPath()` helper in `server/index.js` resolving paths relative to `process.cwd()` to ensure compatibility with Vercel's serverless file execution.
 - Added Vercel functions configuration in `vercel.json` to bundle `server/**` assets (school-zones and `schools_db.json`) into the serverless function.
+- Added OSRM Routing API integration to calculate real driving distance by car instead of straight-line distance.
+- Added highway-snapping detour protection in `getDrivingDistance` (falling back to straight-line distance if driving distance is >1.5km and >2.5x the straight-line distance to avoid snapping errors to nearby freeways).
 
 ### Changed
 - Migrated backend school catchment resolution from Nominatim API bounding-box queries back to local, high-performance offline spatial checks.
-- Updated backend unit tests to verify containment and fallback lookup results across multiple states.
+- Updated backend unit tests to verify containment and fallback lookup results across multiple states, relaxing distance thresholds to accommodate realistic driving routes.
 - Switched hardcoded API endpoint in `extension/content.js` from the preview URL to the production Vercel URL.
 
 ## [0.3.0] - 2026-06-12

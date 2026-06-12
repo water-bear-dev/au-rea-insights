@@ -30,6 +30,7 @@ This handoff summarizes the latest production-oriented state after implementing 
   2. If not contained (or point-only like WA), calculate geodetic Haversine distance to all schools in the state's dataset using their centroids/points and select the closest one.
 - **Ratings Matcher**: Matches name against the local rankings database (`schools_db.json`).
 - **Limit**: Returns exactly 1 closest primary school and 1 closest secondary school.
+- **Distance UI Formatting**: The extension displays the distance simply as "1.3km" directly next to the school type badge, removing the assessment year to ensure a clean layout.
 
 ## 4) Preprocessing Pipeline
 

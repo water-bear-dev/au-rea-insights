@@ -126,7 +126,7 @@ function isPointInGeoJsonGeometry(point, geometry) {
   return false;
 }
 
-// Spatial lookup to find zoned school name and distance
+// Spatial lookup to find zoned school name and coordinates
 function findSchoolBySpatialLookup(lat, lng, state, schoolType) {
   const geojson = getBoundaryGeoJson(state, schoolType);
   if (!geojson || !geojson.features || geojson.features.length === 0) return null;
@@ -139,7 +139,7 @@ function findSchoolBySpatialLookup(lat, lng, state, schoolType) {
       if (isPointInGeoJsonGeometry(point, feature.geometry)) {
         return {
           name: feature.properties.schoolName,
-          distance: 0.1 // inside polygon means we are in the catchment
+          coordinates: feature.properties.centroid
         };
       }
     }
@@ -157,7 +157,7 @@ function findSchoolBySpatialLookup(lat, lng, state, schoolType) {
         minDistance = dist;
         nearestSchool = {
           name: feature.properties.schoolName,
-          distance: dist
+          coordinates: coord
         };
       }
     }
@@ -578,7 +578,37 @@ function isSchoolNameMatch(osmName, dbName) {
   return cOsm.includes(cDb) || cDb.includes(cOsm);
 }
 
-// Resolve schools for catchment
+// Get driving distance by car (OSRM routing API with Haversine fallback)
+async function getDrivingDistance(lat1, lon1, lat2, lon2) {
+  const straightLineDist = calculateDistance(lat1, lon1, lat2, lon2);
+  if (lat1 === null || lon1 === null || lat2 === null || lon2 === null) {
+    return straightLineDist;
+  }
+  try {
+    const url = `http://router.project-osrm.org/route/v1/driving/${lon1},${lat1};${lon2},${lat2}?overview=false`;
+    const response = await axios.get(url, {
+      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' },
+      timeout: 2500
+    });
+    if (response.data && response.data.routes && response.data.routes[0]) {
+      const distanceMeters = response.data.routes[0].distance; // in meters
+      const distanceKm = parseFloat((distanceMeters / 1000).toFixed(1));
+      
+      // Snapping correction: fallback to straight-line distance if driving distance is >1.5km
+      // and is more than 2.5 times the straight-line distance (typical for freeway detours).
+      if (straightLineDist > 0 && distanceKm > 1.5 && (distanceKm / straightLineDist) > 2.5) {
+        console.warn(`[Proxy][Distance] Snapping detour detected: driving distance (${distanceKm}km) is > 2.5x straight-line (${straightLineDist}km). Falling back to straight-line.`);
+        return straightLineDist;
+      }
+      
+      return distanceKm;
+    }
+  } catch (e) {
+    console.warn(`[Proxy][Distance] OSRM driving distance query failed: ${e.message}. Falling back to straight-line.`);
+  }
+  return straightLineDist;
+}
+
 // Resolve schools for catchment
 async function resolveCatchmentSchools(state, suburb, latitude, longitude) {
   const stateSchools = schoolsDb[state] || [];
@@ -589,6 +619,8 @@ async function resolveCatchmentSchools(state, suburb, latitude, longitude) {
     const primaryLookup = findSchoolBySpatialLookup(latitude, longitude, state, 'Primary');
     if (primaryLookup) {
       const bestMatch = findBestSchoolMatch(stateSchools, primaryLookup.name, 'Primary');
+      const coord = primaryLookup.coordinates;
+      const dist = coord ? await getDrivingDistance(latitude, longitude, coord[1], coord[0]) : 0.1;
       resolved.push({
         name: bestMatch ? bestMatch.name : primaryLookup.name,
         type: 'Primary',
@@ -596,7 +628,7 @@ async function resolveCatchmentSchools(state, suburb, latitude, longitude) {
         score: bestMatch ? bestMatch.score : null,
         assessedYear: bestMatch ? bestMatch.assessedYear : null,
         sector: bestMatch ? bestMatch.sector : 'Government',
-        distance: primaryLookup.distance
+        distance: dist
       });
     }
 
@@ -604,6 +636,8 @@ async function resolveCatchmentSchools(state, suburb, latitude, longitude) {
     const secondaryLookup = findSchoolBySpatialLookup(latitude, longitude, state, 'Secondary');
     if (secondaryLookup) {
       const bestMatch = findBestSchoolMatch(stateSchools, secondaryLookup.name, 'Secondary');
+      const coord = secondaryLookup.coordinates;
+      const dist = coord ? await getDrivingDistance(latitude, longitude, coord[1], coord[0]) : 0.1;
       resolved.push({
         name: bestMatch ? bestMatch.name : secondaryLookup.name,
         type: 'Secondary',
@@ -611,7 +645,7 @@ async function resolveCatchmentSchools(state, suburb, latitude, longitude) {
         score: bestMatch ? bestMatch.score : null,
         assessedYear: bestMatch ? bestMatch.assessedYear : null,
         sector: bestMatch ? bestMatch.sector : 'Government',
-        distance: secondaryLookup.distance
+        distance: dist
       });
     }
   }

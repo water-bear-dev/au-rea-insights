@@ -14,11 +14,11 @@ test('resolveCatchmentSchools resolves primary and secondary schools in VIC spat
   
   assert.ok(primary, 'Should resolve a primary school');
   assert.ok(typeof primary.name === 'string' && primary.name.length > 0, 'Primary name should be valid string');
-  assert.ok(primary.distance <= 1.0, `Primary distance (${primary.distance}) should be close`);
+  assert.ok(primary.distance <= 2.5, `Primary distance (${primary.distance}) should be close`);
   
   assert.ok(secondary, 'Should resolve a secondary school');
   assert.ok(typeof secondary.name === 'string' && secondary.name.length > 0, 'Secondary name should be valid string');
-  assert.ok(secondary.distance <= 3.0, `Secondary distance (${secondary.distance}) should be close`);
+  assert.ok(secondary.distance <= 5.0, `Secondary distance (${secondary.distance}) should be close`);
 });
 
 test('resolveCatchmentSchools falls back to nearest school for WA coordinates', async () => {

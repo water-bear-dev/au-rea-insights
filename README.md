@@ -22,6 +22,7 @@ The project uses a **hybrid architecture** to bypass anti-scraping blocks:
   3. `realestate.com.au`
 - **Wait Delays**: A 5-second wait is applied between fallback attempts.
 - **Offline School Catchment Search**: Resolves catchment zones using high-performance local spatial calculations. It checks polygon containment first, falling back to geodetic nearest-neighbor calculations (for point-only locations like WA, or properties outside defined boundaries). Matches results against the Better Education rankings database (`schools_db.json`).
+- **Driving Distance Resolution**: School distances show actual driving distance by car (using OSRM routing API with a straight-line geodetic fallback). Includes a detour guard (falling back to straight-line distance if driving distance is >1.5km and >2.5x straight-line distance) to handle cases where school centroids snap to nearby restricted-access freeways.
 - **1 Primary, 1 Secondary constraint**: The card lists at most the 1 closest primary school and 1 closest secondary school.
 - **Vercel Serverless Support**: Configured for instant deployment to Vercel as Serverless Functions (`vercel.json` + `api/index.js`).
 

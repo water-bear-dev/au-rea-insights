@@ -411,8 +411,7 @@ function injectInsightsPanel(landSize, schools, showLandSize, showSchools) {
           : `<div class="au-insights-rank-none">Unranked</div>`;
       }
 
-      const assessedYear = school.assessedYear ? `Assessed ${school.assessedYear}` : 'No rating data';
-      const distanceText = school.distance ? ` • ${school.distance}km` : '';
+      const distanceText = school.distance ? `${school.distance}km` : '';
 
       rowsHtml += `
         <div class="au-insights-school-row">
@@ -420,7 +419,7 @@ function injectInsightsPanel(landSize, schools, showLandSize, showSchools) {
             <div class="au-insights-school-name">${school.name}</div>
             <div class="au-insights-school-meta">
               <span class="au-insights-school-type">${school.type}</span>
-              <span>${assessedYear}${distanceText}</span>
+              ${distanceText ? `<span>${distanceText}</span>` : ''}
             </div>
           </div>
           <div class="au-insights-rating-block">
