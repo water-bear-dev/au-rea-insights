@@ -667,7 +667,25 @@ async function resolveCatchmentSchools(state, suburb, latitude, longitude) {
 
 // Health Check
 app.get('/health', (req, res) => {
-  res.json({ status: 'ok', timestamp: new Date() });
+  const root = getRootPath();
+  const dbPath = path.join(root, 'server', 'schools_db.json');
+  const zonesDir = path.join(root, 'server', 'data', 'school-zones');
+  
+  res.json({
+    status: 'ok',
+    timestamp: new Date(),
+    debug: {
+      cwd: process.cwd(),
+      rootPath: root,
+      dbPath: dbPath,
+      dbExists: fs.existsSync(dbPath),
+      vicSchoolsCount: schoolsDb.VIC ? schoolsDb.VIC.length : 0,
+      nswSchoolsCount: schoolsDb.NSW ? schoolsDb.NSW.length : 0,
+      zonesDir: zonesDir,
+      zonesDirExists: fs.existsSync(zonesDir),
+      zonesFiles: fs.existsSync(zonesDir) ? fs.readdirSync(zonesDir).filter(f => f.endsWith('.json')) : []
+    }
+  });
 });
 
 // API endpoint for property insights
