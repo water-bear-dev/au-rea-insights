@@ -13,10 +13,13 @@ All notable changes to this project are documented in this file.
 - Added geometry simplification (0.0002 degrees tolerance) and centroid coordinate calculation to maintain small GeoJSON file sizes.
 - Added local MultiPolygon containment checks (`isPointInGeoJsonGeometry`) in `server/index.js` supporting holes.
 - Added nearest-distance fallback using computed centroids for properties outside defined polygon areas or for states with point-only data (like WA).
+- Added `getRootPath()` helper in `server/index.js` resolving paths relative to `process.cwd()` to ensure compatibility with Vercel's serverless file execution.
+- Added Vercel functions configuration in `vercel.json` to bundle `server/**` assets (school-zones and `schools_db.json`) into the serverless function.
 
 ### Changed
 - Migrated backend school catchment resolution from Nominatim API bounding-box queries back to local, high-performance offline spatial checks.
 - Updated backend unit tests to verify containment and fallback lookup results across multiple states.
+- Switched hardcoded API endpoint in `extension/content.js` from the preview URL to the production Vercel URL.
 
 ## [0.3.0] - 2026-06-12
 

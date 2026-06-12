@@ -39,10 +39,14 @@ au-rea-insights/
 │   ├── popup.html
 │   └── popup.js
 ├── server/
+│   ├── data/
+│   │   └── school-zones/
 │   ├── scripts/
+│   │   ├── process_zones.py
 │   │   └── update_schools_db.js
 │   ├── index.js
 │   ├── land-size.test.js
+│   ├── schools-lookup.test.js
 │   ├── schools_db.json
 │   └── package.json
 ├── tests/

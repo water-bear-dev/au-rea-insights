@@ -1,12 +1,12 @@
 # Agent Handoff: AU Real Estate Insights
 
-This handoff summarizes the latest production-oriented state after implementing the unified offline school zones compilation and backend catchment checks.
+This handoff summarizes the latest production-oriented state after implementing the unified offline school zones compilation, backend catchment containment/fallback checks, and Vercel serverless configurations.
 
 ## 1) Current Architecture (Important)
 
 - **Extension Service Worker (`extension/background.js`)**: Executes client-side background scraping of land sizes using the user's residential IP to bypass datacenter blocks (403 Forbidden errors).
-- **Content Script (`extension/content.js`)**: Scrapes listing details, triggers background land size scraping and backend school lookup, and renders the insights card UI.
-- **Serverless Backend (`server/index.js` / Vercel)**: Geocodes addresses and runs offline local spatial lookups using the compiled school zones in `server/data/school-zones/`.
+- **Content Script (`extension/content.js`)**: Scrapes listing details, triggers background land size scraping and backend school lookup, and renders the insights card UI. Configured to query the production Vercel deployment: `https://au-rea-insights.vercel.app`.
+- **Serverless Backend (`server/index.js` / Vercel)**: Geocodes addresses and runs offline local spatial lookups using the compiled school zones in `server/data/school-zones/`. Path resolution uses `process.cwd()` via a custom `getRootPath()` helper to resolve files correctly in the Vercel Lambda container.
 
 ## 2) Land Size Resolution Policy
 
@@ -48,8 +48,14 @@ This handoff summarizes the latest production-oriented state after implementing 
   - Point-only nearest school lookups in WA.
   - Missing coordinates suburb matching fallback.
 
-## 6) Guardrails
+## 6) Deployment Checklist
+
+1. **Vercel Serverless**: Deploy the root directory. Vercel routes `/api/insights` traffic to `api/index.js`.
+2. **Asset Bundling**: `vercel.json` contains `"includeFiles": "server/**"` to ensure that `schools_db.json` and the `data/school-zones/` JSON files are copied into the Lambda function package during compilation.
+3. **Extension Configuration**: Ensure `content.js` calls the correct production Vercel URL.
+
+## 7) Guardrails
 
 - **Do not make Nominatim geocoding requests without a valid custom User-Agent header**.
 - **Keep geometry simplification intact** (tolerance `0.0002`) to prevent serverless function payload limits from being exceeded.
-- **Ensure school ratings continue to align with the overall state-wide rankings**.
+- **Ensure school ratings continue to align with the overall state-wide Better Education rankings**.
