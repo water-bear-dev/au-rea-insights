@@ -11,8 +11,17 @@ const PORT = process.env.PORT || 3000;
 app.use(cors());
 app.use(express.json());
 
+// Helper to get absolute project root across local and Vercel environments
+function getRootPath() {
+  const cwd = process.cwd();
+  if (cwd.endsWith('/server') || cwd.endsWith('\\server')) {
+    return path.join(cwd, '..');
+  }
+  return cwd;
+}
+
 // Load school rankings database
-const schoolsDbPath = path.join(__dirname, 'schools_db.json');
+const schoolsDbPath = path.join(getRootPath(), 'server', 'schools_db.json');
 let schoolsDb = { VIC: [], NSW: [], QLD: [] };
 try {
   schoolsDb = JSON.parse(fs.readFileSync(schoolsDbPath, 'utf8'));
@@ -32,7 +41,7 @@ function getBoundaryGeoJson(state, schoolType) {
     return boundaryCache[key];
   }
   
-  const filePath = path.join(__dirname, 'data', 'school-zones', `${stateCode.toLowerCase()}_${typeCode}.json`);
+  const filePath = path.join(getRootPath(), 'server', 'data', 'school-zones', `${stateCode.toLowerCase()}_${typeCode}.json`);
   try {
     if (fs.existsSync(filePath)) {
       boundaryCache[key] = JSON.parse(fs.readFileSync(filePath, 'utf8'));
