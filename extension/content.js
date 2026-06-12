@@ -1,5 +1,5 @@
 // Configuration
-const API_BASE_URL = 'https://au-rea-insights-5mzdpd2qk-andrew-phams-projects-adfc4da2.vercel.app'; // Change to your deployed URL (e.g., 'https://my-insights-app.onrender.com')
+const API_BASE_URL = 'https://au-rea-insights.vercel.app'; // Change to your deployed URL (e.g., 'https://my-insights-app.onrender.com')
 const CACHE_PREFIX = 'insights_cache_v2_';
 const LEGACY_CACHE_PREFIX = 'insights_cache_';
 const INSIGHTS_DEBOUNCE_MS = 800;
