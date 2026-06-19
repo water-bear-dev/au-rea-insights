@@ -75,11 +75,26 @@ Create `server/.env`:
 PORT=3000
 ```
 
-### 3) Start backend
+### 3) Start backend (Local API)
+
+Since scraping real estate platforms from cloud servers (like Vercel) often results in `403 Forbidden` errors, you can run the backend locally to use your residential IP for retrieving land sizes via a standalone API.
 
 ```bash
 npm --prefix server install
 npm --prefix server run dev
+```
+
+Once the server is running, you can retrieve land sizes by calling the local API:
+
+```bash
+# Query by address
+curl "http://localhost:3000/api/insights?street=1+Example+Street&suburb=Melbourne&state=VIC&postcode=3000"
+
+# Query by generic search string
+curl "http://localhost:3000/api/insights?q=1+Example+Street,+Melbourne+VIC+3000"
+
+# Query by realestate.com.au property URL
+curl "http://localhost:3000/api/insights?url=https://www.realestate.com.au/property/1-example-street-melbourne-vic-3000"
 ```
 
 ### 4) Update School Database (Optional)
@@ -94,6 +109,17 @@ node server/scripts/update_schools_db.js
 
 Open a property page on `realestate.com.au` or `domain.com.au`.
 The extension injects the Property Insights card once the proxy responds.
+
+### 6) Deploy Your Own Cloud API (Optional)
+
+If you'd rather not run the backend locally, you can deploy your own instance of the API to Vercel. This project is pre-configured with a `vercel.json` file.
+
+1. Install the Vercel CLI: `npm i -g vercel`
+2. Run `vercel` in the project root to deploy.
+3. Once deployed, open `extension/content.js` and update `API_BASE_URL` to point to your new Vercel deployment URL (e.g., `https://your-project.vercel.app`).
+4. Reload the extension in Chrome (`chrome://extensions`).
+
+**Note**: Land size scraping might encounter `403 Forbidden` errors when routed through cloud IPs, but coordinate geocoding and school catchment searches will continue to work normally.
 
 ## Testing
 
