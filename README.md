@@ -116,4 +116,7 @@ Open local mock page for UI checks:
 - Verify fallback attempts in server logs:
   - `[Proxy][LandSizeAttempt] ...`
 
+## Support
+
+[![Ko-fi Tips and Donations](kofi-profile.jpg)](https://ko-fi.com/waterbear9999)
 
