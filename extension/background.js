@@ -365,6 +365,8 @@ async function fetchOnTheHouseLivability(address) {
     console.warn('[Background Scraper] OnTheHouse autocomplete suggest query failed:', suggestErr.message);
   }
 
+  let candidateUrls = [];
+
   // Fallback candidate URL generation if autocomplete API did not return a URL
   if (!targetUrl) {
     const streetSlug = getStreetSlug(address.street);
@@ -443,18 +445,21 @@ function parseOnTheHouseLivabilityHtml(html) {
   }
 
   // 2. HTML text / regex matching for OnTheHouse 10-scale or 100-scale
-  const tenScaleMatch = html.match(/Liveability\s*Score[^\d]*(\d(?:\.\d)?)\s*\/\s*10/i) ||
+  const tenScaleMatch = html.match(/Local\s*Area\s*Liveability\s*Score[^\d]*(\d(?:\.\d)?)/i) ||
+                        html.match(/Liveability\s*Score[^\d]*(\d(?:\.\d)?)/i) ||
                         html.match(/(\d(?:\.\d)?)\s*\/\s*10\s*Liveability/i) ||
                         html.match(/class="[^"]*liveability[^"]*"[^>]*>\s*(\d(?:\.\d)?)/i);
 
   if (tenScaleMatch) {
     const val = parseFloat(tenScaleMatch[1]);
-    return {
-      display: `${val.toFixed(1)}/10`,
-      value: val,
-      scale: 10,
-      label: getLivabilityLabel(val, true)
-    };
+    if (!isNaN(val) && val <= 10) {
+      return {
+        display: `${val.toFixed(1)}/10`,
+        value: val,
+        scale: 10,
+        label: getLivabilityLabel(val, true)
+      };
+    }
   }
 
   const hundredScaleMatch = html.match(/Liveability\s*Score[^\d]*(\d{1,3})/i);
