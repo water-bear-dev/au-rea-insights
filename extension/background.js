@@ -372,24 +372,26 @@ async function fetchOnTheHouseLivability(address) {
     console.warn('[Livability Scraper] OnTheHouse autocomplete suggest query failed:', suggestErr.message);
   }
 
+  // Build candidate URL variations for OnTheHouse property and suburb pages
+  const streetSlug = getStreetSlug(address.street); // e.g. 14-miller-cres
+  const fullStreetSlug = address.street.toLowerCase().replace(/[^a-z0-9\s-]/g, '').trim().replace(/\s+/g, '-'); // e.g. 14-miller-crescent
+  const suburbSlug = address.suburb.toLowerCase().replace(/[^a-z0-9\s-]/g, '').trim().replace(/\s+/g, '-');
+  const stateLower = address.state.toLowerCase();
+  const postcodeSafe = address.postcode ? address.postcode.trim() : '';
+
   let candidateUrls = [];
-
-  // Fallback candidate URL generation if autocomplete API did not return a URL
-  if (!targetUrl) {
-    const streetSlug = getStreetSlug(address.street);
-    const fullStreetSlug = address.street.toLowerCase().replace(/[^a-z0-9\s-]/g, '').trim().replace(/\s+/g, '-');
-    const suburbSlug = address.suburb.toLowerCase().replace(/[^a-z0-9\s-]/g, '').trim().replace(/\s+/g, '-');
-    const stateLower = address.state.toLowerCase();
-    const postcodeSafe = address.postcode ? address.postcode.trim() : '';
-
-    candidateUrls = [
-      `https://www.onthehouse.com.au/property/${stateLower}/${suburbSlug}-${postcodeSafe}/${streetSlug}-${suburbSlug}-${stateLower}-${postcodeSafe}`,
-      `https://www.onthehouse.com.au/property/${stateLower}/${suburbSlug}-${postcodeSafe}/${fullStreetSlug}-${suburbSlug}-${stateLower}-${postcodeSafe}`
-    ];
-    console.log('[Livability Scraper] Using fallback property URLs:', candidateUrls);
-  } else {
-    candidateUrls = [targetUrl];
+  if (targetUrl) {
+    candidateUrls.push(targetUrl);
   }
+
+  // Include property slug variations
+  candidateUrls.push(
+    `https://www.onthehouse.com.au/property/${stateLower}/${suburbSlug}-${postcodeSafe}/${streetSlug}-${suburbSlug}-${stateLower}-${postcodeSafe}`,
+    `https://www.onthehouse.com.au/property/${stateLower}/${suburbSlug}-${postcodeSafe}/${fullStreetSlug}-${suburbSlug}-${stateLower}-${postcodeSafe}`,
+    `https://www.onthehouse.com.au/property/${stateLower}/${suburbSlug}-${postcodeSafe}/${streetSlug}`,
+    `https://www.onthehouse.com.au/suburb/${stateLower}/${suburbSlug}-${postcodeSafe}`
+  );
+  console.log('[Livability Scraper] Target candidate URLs queue:', candidateUrls);
 
   // Step 2: Fetch listing HTML page and parse Livability score
   for (const url of candidateUrls) {
