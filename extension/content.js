@@ -304,6 +304,13 @@ async function fetchPropertyInsights(addressInfo, showLandSize, showSchools, sho
         landSizeLogs: landSizeData.attempts || []
       };
 
+      // Console debug log output for user inspection
+      if (livabilityData && livabilityData.status === 'verified') {
+        console.log(`%c[AU Insights][Livability] SUCCESS: ${livabilityData.scoreDisplay} (${livabilityData.label}) | Source: ${livabilityData.source}`, 'color: #10b981; font-weight: bold;');
+      } else {
+        console.warn(`%c[AU Insights][Livability] UNABLE TO RETRIEVE: Status=${livabilityData?.status || 'failed'}, Reason=${livabilityData?.reason || 'no_response'}`, 'color: #f59e0b; font-weight: bold;');
+      }
+
       // Save successfully resolved details to cache
       const cacheData = {};
       cacheData[cacheKey] = resolvedData;
