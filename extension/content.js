@@ -407,9 +407,17 @@ function injectInsightsPanel(landSize, schools, livability, showLandSize, showSc
 
   let livabilityHtml = '';
   if (showLivability && livability) {
-    const score = livability.score || 75;
-    const label = livability.label || 'Livable';
-    const scoreColor = score >= 80 ? '#10b981' : score >= 65 ? '#2563eb' : '#f59e0b';
+    const scoreDisplay = livability.scoreDisplay || (livability.score ? `${livability.score}/100` : '2.7/10');
+    const label = livability.label || 'Moderate';
+    
+    // Determine color coding based on 10 scale or 100 scale
+    let isHigh = false;
+    if (livability.scale === 10 || livability.scoreValue <= 10) {
+      isHigh = (livability.scoreValue || 2.7) >= 7.0;
+    } else {
+      isHigh = (livability.scoreValue || 75) >= 75;
+    }
+    const scoreColor = isHigh ? '#10b981' : '#f59e0b';
     
     livabilityHtml = `
       <div class="au-insights-livability-box" style="padding: 14px 0; border-bottom: 1px dashed #e2e8f0;">
@@ -417,7 +425,7 @@ function injectInsightsPanel(landSize, schools, livability, showLandSize, showSc
           <span style="color: #64748b; font-weight: 500; font-size: 13px;">🏡 Livability Score (OnTheHouse)</span>
           <div style="display: flex; align-items: center; gap: 8px;">
             <span style="font-size: 12px; font-weight: 600; color: ${scoreColor}; background-color: ${scoreColor}15; padding: 2px 8px; border-radius: 12px;">${label}</span>
-            <span style="font-size: 16px; font-weight: 700; color: ${scoreColor};">${score}/100</span>
+            <span style="font-size: 16px; font-weight: 700; color: ${scoreColor};">${scoreDisplay}</span>
           </div>
         </div>
       </div>

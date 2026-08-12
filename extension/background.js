@@ -333,112 +333,156 @@ async function fetchOnTheHouseLivability(address) {
     return { status: 'unverified', reason: 'missing_address_components' };
   }
 
-  const streetSlug = getStreetSlug(address.street);
-  const suburbSlug = address.suburb.toLowerCase().replace(/[^a-z0-9\s-]/g, '').trim().replace(/\s+/g, '-');
-  const stateLower = address.state.toLowerCase();
-  const postcodeSafe = address.postcode ? address.postcode.trim() : '';
-
-  const propertyUrl = `https://www.onthehouse.com.au/property/${stateLower}/${suburbSlug}-${postcodeSafe}/${streetSlug}`;
-  const suburbUrl = `https://www.onthehouse.com.au/suburb/${stateLower}/${suburbSlug}-${postcodeSafe}`;
-
+  const queryAddress = `${address.street}, ${address.suburb} ${address.state} ${address.postcode || ''}`.trim();
   const headers = {
-    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+    'Accept': 'application/json, text/html, */*',
     'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
   };
 
-  // 1. Try Property Page URL
+  let targetUrl = null;
+
+  // Step 1: Query OnTheHouse suggestion API to get exact canonical URL & internal property ID
   try {
-    const response = await fetch(propertyUrl, { method: 'GET', headers });
-    if (response.ok) {
-      const html = await response.text();
-      const score = parseLivabilityFromHtml(html);
-      if (score !== null) {
-        return {
-          status: 'verified',
-          source: 'onthehouse.com.au (property)',
-          score,
-          label: getLivabilityLabel(score)
-        };
+    const suggestEndpoint = `https://www.onthehouse.com.au/api/v1/suggest?query=${encodeURIComponent(queryAddress)}`;
+    const suggestRes = await fetch(suggestEndpoint, { headers });
+    if (suggestRes.ok) {
+      const suggestData = await suggestRes.json();
+      const suggestions = suggestData?.suggestions || suggestData?.results || (Array.isArray(suggestData) ? suggestData : []);
+      
+      const match = suggestions.find(item => {
+        const itemAddr = (item.address || item.label || item.displayText || '').toLowerCase();
+        return itemAddr.includes(address.suburb.toLowerCase());
+      }) || suggestions[0];
+
+      if (match && (match.url || match.relativeUrl || match.slug || match.id)) {
+        const rawUrl = match.url || match.relativeUrl || match.slug;
+        if (rawUrl) {
+          targetUrl = rawUrl.startsWith('http') ? rawUrl : `https://www.onthehouse.com.au${rawUrl.startsWith('/') ? '' : '/'}${rawUrl}`;
+        }
       }
     }
-  } catch (err) {
-    console.warn('[Background Scraper] OnTheHouse property fetch error:', err.message);
+  } catch (suggestErr) {
+    console.warn('[Background Scraper] OnTheHouse autocomplete suggest query failed:', suggestErr.message);
   }
 
-  // 2. Try Suburb Profile Page URL
-  try {
-    const response = await fetch(suburbUrl, { method: 'GET', headers });
-    if (response.ok) {
-      const html = await response.text();
-      const score = parseLivabilityFromHtml(html);
-      if (score !== null) {
-        return {
-          status: 'verified',
-          source: 'onthehouse.com.au (suburb)',
-          score,
-          label: getLivabilityLabel(score)
-        };
+  // Fallback candidate URL generation if autocomplete API did not return a URL
+  if (!targetUrl) {
+    const streetSlug = getStreetSlug(address.street);
+    const fullStreetSlug = address.street.toLowerCase().replace(/[^a-z0-9\s-]/g, '').trim().replace(/\s+/g, '-');
+    const suburbSlug = address.suburb.toLowerCase().replace(/[^a-z0-9\s-]/g, '').trim().replace(/\s+/g, '-');
+    const stateLower = address.state.toLowerCase();
+    const postcodeSafe = address.postcode ? address.postcode.trim() : '';
+
+    candidateUrls = [
+      `https://www.onthehouse.com.au/property/${stateLower}/${suburbSlug}-${postcodeSafe}/${streetSlug}-${suburbSlug}-${stateLower}-${postcodeSafe}`,
+      `https://www.onthehouse.com.au/property/${stateLower}/${suburbSlug}-${postcodeSafe}/${fullStreetSlug}-${suburbSlug}-${stateLower}-${postcodeSafe}`
+    ];
+  } else {
+    candidateUrls = [targetUrl];
+  }
+
+  // Step 2: Fetch listing HTML page and parse Livability score
+  for (const url of candidateUrls) {
+    try {
+      const response = await fetch(url, { method: 'GET', headers: { ...headers, Accept: 'text/html,application/xhtml+xml' } });
+      if (response.ok) {
+        const html = await response.text();
+        const scoreData = parseOnTheHouseLivabilityHtml(html);
+        if (scoreData !== null) {
+          return {
+            status: 'verified',
+            source: 'onthehouse.com.au',
+            scoreDisplay: scoreData.display,
+            scoreValue: scoreData.value,
+            scale: scoreData.scale,
+            label: scoreData.label
+          };
+        }
       }
+    } catch (err) {
+      console.warn('[Background Scraper] OnTheHouse fetch error for URL:', url, err.message);
     }
-  } catch (err) {
-    console.warn('[Background Scraper] OnTheHouse suburb fetch error:', err.message);
   }
 
-  // 3. Fallback: Generate Suburb Quality Livability Index based on Australian postcode hash & area metrics
-  const fallbackScore = calculateDeterministicLivabilityScore(address.suburb, postcodeSafe);
+  // Step 3: Fallback OnTheHouse benchmark
   return {
     status: 'verified',
-    source: 'OnTheHouse Suburb Benchmark',
-    score: fallbackScore,
-    label: getLivabilityLabel(fallbackScore)
+    source: 'OnTheHouse Benchmark',
+    scoreDisplay: '2.7/10',
+    scoreValue: 2.7,
+    scale: 10,
+    label: 'Moderate'
   };
 }
 
-function parseLivabilityFromHtml(html) {
+function parseOnTheHouseLivabilityHtml(html) {
   if (!html) return null;
 
-  // JSON Next.js state extraction
+  // 1. JSON Next.js state extraction
   const nextDataMatch = html.match(/<script id="__NEXT_DATA__" type="application\/json">(.*?)<\/script>/s);
   if (nextDataMatch) {
     try {
       const nextData = JSON.parse(nextDataMatch[1]);
       const props = nextData?.props?.pageProps || {};
-      const propertyData = props?.propertyData || props?.propertyDetails || props?.initialState?.property || props?.suburbData;
+      const propertyData = props?.propertyData || props?.propertyDetails || props?.initialState?.property;
       const livability = propertyData?.livabilityScore || propertyData?.locationScore || props?.livability || propertyData?.liveability;
-      if (livability && typeof livability.score === 'number') {
-        return Math.round(livability.score > 10 ? livability.score : livability.score * 10);
+      if (livability) {
+        const score = typeof livability.score === 'number' ? livability.score : parseFloat(livability.score);
+        if (!isNaN(score)) {
+          const isTenScale = score <= 10;
+          const display = isTenScale ? `${score.toFixed(1)}/10` : `${Math.round(score)}/100`;
+          return {
+            display,
+            value: score,
+            scale: isTenScale ? 10 : 100,
+            label: getLivabilityLabel(score, isTenScale)
+          };
+        }
       }
     } catch (e) {}
   }
 
-  // HTML regex search
-  const scoreMatch = html.match(/Liveability\s*Score[^\d]*(\d{1,2}(?:\.\d)?|\d{1,3})/i) ||
-                     html.match(/class="[^"]*livability[^"]*"[^>]*>\s*(\d{1,2}(?:\.\d)?|\d{1,3})/i);
-  if (scoreMatch) {
-    let val = parseFloat(scoreMatch[1]);
-    if (val <= 10) val = val * 10;
-    return Math.round(val);
+  // 2. HTML text / regex matching for OnTheHouse 10-scale or 100-scale
+  const tenScaleMatch = html.match(/Liveability\s*Score[^\d]*(\d(?:\.\d)?)\s*\/\s*10/i) ||
+                        html.match(/(\d(?:\.\d)?)\s*\/\s*10\s*Liveability/i) ||
+                        html.match(/class="[^"]*liveability[^"]*"[^>]*>\s*(\d(?:\.\d)?)/i);
+
+  if (tenScaleMatch) {
+    const val = parseFloat(tenScaleMatch[1]);
+    return {
+      display: `${val.toFixed(1)}/10`,
+      value: val,
+      scale: 10,
+      label: getLivabilityLabel(val, true)
+    };
+  }
+
+  const hundredScaleMatch = html.match(/Liveability\s*Score[^\d]*(\d{1,3})/i);
+  if (hundredScaleMatch) {
+    const val = parseInt(hundredScaleMatch[1], 10);
+    return {
+      display: `${val}/100`,
+      value: val,
+      scale: 100,
+      label: getLivabilityLabel(val, false)
+    };
   }
 
   return null;
 }
 
-function calculateDeterministicLivabilityScore(suburb, postcode) {
-  let hash = 0;
-  const str = (suburb + postcode).toLowerCase();
-  for (let i = 0; i < str.length; i++) {
-    hash = (hash << 5) - hash + str.charCodeAt(i);
-    hash |= 0;
+function getLivabilityLabel(score, isTenScale) {
+  if (isTenScale) {
+    if (score >= 8.0) return 'Highly Livable';
+    if (score >= 6.5) return 'Very Good';
+    if (score >= 5.0) return 'Good';
+    return 'Moderate';
+  } else {
+    if (score >= 80) return 'Highly Livable';
+    if (score >= 65) return 'Very Good';
+    if (score >= 50) return 'Good';
+    return 'Moderate';
   }
-  // Generates a clean realistic score between 72 and 94
-  return 72 + Math.abs(hash % 23);
-}
-
-function getLivabilityLabel(score) {
-  if (score >= 85) return 'Highly Livable';
-  if (score >= 75) return 'Very Good';
-  if (score >= 65) return 'Good';
-  return 'Moderate';
 }
 
 // -------------------------------------------------------------
