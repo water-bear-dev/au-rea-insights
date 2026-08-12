@@ -271,9 +271,6 @@ async function fetchPropertyInsights(addressInfo, showLandSize, showSchools, sho
           return { schools: [], error: false };
         }
         try {
-          const localCheck = await fetch(`${API_BASE_URL}/health`, { method: 'GET' });
-          if (!localCheck.ok) throw new Error('Proxy server not healthy');
-
           const params = new URLSearchParams();
           params.append('street', addressInfo.street);
           params.append('suburb', addressInfo.suburb);
