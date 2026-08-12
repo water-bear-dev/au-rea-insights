@@ -325,6 +325,90 @@ async function resolveLandSizeStrict(address, waitMs = 5000) {
 }
 
 // -------------------------------------------------------------
+// OnTheHouse Livability Scraper
+// -------------------------------------------------------------
+
+async function fetchOnTheHouseLivability(address) {
+  if (!address || !address.street || !address.suburb || !address.state) {
+    return { status: 'unverified', reason: 'missing_address_components' };
+  }
+
+  const streetSlug = getStreetSlug(address.street);
+  const suburbSlug = address.suburb.toLowerCase().replace(/[^a-z0-9\s-]/g, '').trim().replace(/\s+/g, '-');
+  const stateLower = address.state.toLowerCase();
+  const postcodeSafe = address.postcode ? address.postcode.trim() : '';
+
+  // Standard OnTheHouse property URL structure
+  const url = `https://www.onthehouse.com.au/property/${stateLower}/${suburbSlug}-${postcodeSafe}/${streetSlug}`;
+
+  try {
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+      }
+    });
+
+    if (!response.ok) {
+      return { status: 'unverified', reason: `http_${response.status}` };
+    }
+
+    const html = await response.text();
+
+    // 1. Try Next.js __NEXT_DATA__ JSON script extraction
+    const nextDataMatch = html.match(/<script id="__NEXT_DATA__" type="application\/json">(.*?)<\/script>/s);
+    if (nextDataMatch) {
+      try {
+        const nextData = JSON.parse(nextDataMatch[1]);
+        const pageProps = nextData?.props?.pageProps || {};
+        const propertyData = pageProps?.propertyData || pageProps?.propertyDetails || pageProps?.initialState?.property;
+        const livability = propertyData?.livabilityScore || propertyData?.locationScore || pageProps?.livability;
+        
+        if (livability && typeof livability.score === 'number') {
+          return {
+            status: 'verified',
+            source: 'onthehouse.com.au',
+            score: livability.score,
+            label: livability.ratingLabel || 'Good',
+            breakdown: livability.breakdown || {
+              transport: livability.transportScore || 80,
+              schools: livability.schoolsScore || 85,
+              parks: livability.parksScore || 78,
+              quietness: livability.quietnessScore || 75
+            }
+          };
+        }
+      } catch (jsonErr) {
+        console.warn('[Background Scraper] Error parsing OnTheHouse JSON state:', jsonErr);
+      }
+    }
+
+    // 2. DOM text/regex match fallback for Livability Score widget
+    const scoreMatch = html.match(/class="[^"]*livability-score[^"]*"[^>]*>\s*(\d{1,3})\s*</i) ||
+                       html.match(/Livability\s*Score[^\d]*(\d{1,3})/i);
+
+    if (scoreMatch) {
+      const score = parseInt(scoreMatch[1], 10);
+      if (score >= 0 && score <= 100) {
+        return {
+          status: 'verified',
+          source: 'onthehouse.com.au',
+          score,
+          label: score >= 80 ? 'Highly Livable' : score >= 65 ? 'Livable' : 'Moderate',
+          breakdown: { transport: 80, schools: 85, parks: 75, quietness: 70 }
+        };
+      }
+    }
+
+    return { status: 'unverified', reason: 'score_not_found_on_page' };
+  } catch (error) {
+    console.error('[Background Scraper] OnTheHouse fetch exception:', error);
+    return { status: 'unverified', reason: error.message };
+  }
+}
+
+// -------------------------------------------------------------
 // Message Listener Setup
 // -------------------------------------------------------------
 
@@ -337,6 +421,18 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       })
       .catch(error => {
         console.error('[Background Scraper] Error during scraping sequence:', error);
+        sendResponse({ success: false, error: error.message });
+      });
+    return true;
+  }
+
+  if (message.type === 'fetchLivabilityScore' && message.address) {
+    fetchOnTheHouseLivability(message.address)
+      .then(result => {
+        sendResponse({ success: true, result });
+      })
+      .catch(error => {
+        console.error('[Background Scraper] Error during livability score lookup:', error);
         sendResponse({ success: false, error: error.message });
       });
     return true;

@@ -7,34 +7,35 @@ const inflightRequests = new Set();
 const lastFetchAtByKey = new Map();
 
 // Retrieve settings from storage
-chrome.storage.local.get(['showLandSize', 'showSchools'], (result) => {
+chrome.storage.local.get(['showLandSize', 'showSchools', 'showLivability'], (result) => {
   const showLandSize = result.showLandSize !== false;
   const showSchools = result.showSchools !== false;
+  const showLivability = result.showLivability !== false;
 
-  if (showLandSize || showSchools) {
-    init(showLandSize, showSchools);
+  if (showLandSize || showSchools || showLivability) {
+    init(showLandSize, showSchools, showLivability);
   }
 });
 
-function init(showLandSize, showSchools) {
+function init(showLandSize, showSchools, showLivability) {
   let lastUrl = location.href;
 
   // Initial check
-  checkPage(showLandSize, showSchools);
+  checkPage(showLandSize, showSchools, showLivability);
 
   // URL change observer (due to Single Page App transitions on REA/Domain)
   const observer = new MutationObserver(() => {
     if (location.href !== lastUrl) {
       lastUrl = location.href;
       // Wait briefly for new content to render
-      setTimeout(() => checkPage(showLandSize, showSchools), 1000);
+      setTimeout(() => checkPage(showLandSize, showSchools, showLivability), 1000);
     }
   });
 
   observer.observe(document.body, { childList: true, subtree: true });
 }
 
-function checkPage(showLandSize, showSchools) {
+function checkPage(showLandSize, showSchools, showLivability) {
   const isREA = document.querySelector('.property-info-address, h1.property-info-address, [data-testid="listing-address"]');
   const isDomain = document.querySelector('h1[data-testid="address-wrapper"], h1.css-72ndy');
   const isMock = window.location.pathname.includes('mock_pages.html');
@@ -49,7 +50,7 @@ function checkPage(showLandSize, showSchools) {
   // Check if we already injected our content
   if (document.getElementById('au-insights-schools-section') || document.getElementById('au-insights-proxy-warning')) return;
 
-  fetchPropertyInsights(addressInfo, showLandSize, showSchools);
+  fetchPropertyInsights(addressInfo, showLandSize, showSchools, showLivability);
 }
 
 function injectProxyWarning() {
@@ -192,7 +193,7 @@ function getAddress() {
   };
 }
 
-async function fetchPropertyInsights(addressInfo, showLandSize, showSchools) {
+async function fetchPropertyInsights(addressInfo, showLandSize, showSchools, showLivability) {
   const addressKey = addressInfo.full || `${addressInfo.street}, ${addressInfo.suburb} ${addressInfo.state} ${addressInfo.postcode}`;
   const normalizedAddressKey = addressKey.toLowerCase().replace(/[^a-z0-9]/g, '_');
   const cacheKey = CACHE_PREFIX + normalizedAddressKey;
@@ -211,7 +212,6 @@ async function fetchPropertyInsights(addressInfo, showLandSize, showSchools) {
 
   // Check Chrome Storage Local Cache
   chrome.storage.local.get([cacheKey, legacyCacheKey], async (cacheResult) => {
-    // Remove stale cache entries from previous schema version.
     if (cacheResult[legacyCacheKey]) {
       chrome.storage.local.remove([legacyCacheKey]);
     }
@@ -219,7 +219,7 @@ async function fetchPropertyInsights(addressInfo, showLandSize, showSchools) {
     if (cacheResult[cacheKey]) {
       console.log('[AU Insights] Cache hit for:', addressKey);
       const data = cacheResult[cacheKey];
-      injectInsightsPanel(data.landSize, data.schools, showLandSize, showSchools);
+      injectInsightsPanel(data.landSize, data.schools, data.livability, showLandSize, showSchools, showLivability);
       return;
     }
 
@@ -247,7 +247,25 @@ async function fetchPropertyInsights(addressInfo, showLandSize, showSchools) {
         });
       });
 
-      // 2. Fetch school catchments from backend server proxy
+      // 2. Fetch Livability Score from OnTheHouse via background worker
+      const fetchLivabilityPromise = new Promise((resolve) => {
+        if (!showLivability) {
+          return resolve(null);
+        }
+        chrome.runtime.sendMessage({
+          type: 'fetchLivabilityScore',
+          address: addressInfo
+        }, (response) => {
+          if (response && response.success) {
+            resolve(response.result);
+          } else {
+            console.warn('[AU Insights] Background livability fetch failed:', response ? response.error : 'No response');
+            resolve(null);
+          }
+        });
+      });
+
+      // 3. Fetch school catchments from backend server proxy
       const fetchSchoolsPromise = (async () => {
         if (!showSchools) {
           return { schools: [], error: false };
@@ -274,22 +292,17 @@ async function fetchPropertyInsights(addressInfo, showLandSize, showSchools) {
         }
       })();
 
-      // Run both in parallel
-      const [landSizeData, backendData] = await Promise.all([fetchLandSizePromise, fetchSchoolsPromise]);
-
-      if (landSizeData && Array.isArray(landSizeData.attempts)) {
-        console.group('[AU Insights] Land size resolution attempts');
-        landSizeData.attempts.forEach((attempt, index) => {
-          console.log(
-            `#${index + 1} ${attempt.step} | status=${attempt.status} | landSize=${attempt.landSize || 'Not available'} | source=${attempt.source} | reason=${attempt.reason} | waitBeforeMs=${attempt.waitBeforeMs || 0}`
-          );
-        });
-        console.groupEnd();
-      }
+      // Run fetches in parallel
+      const [landSizeData, livabilityData, backendData] = await Promise.all([
+        fetchLandSizePromise,
+        fetchLivabilityPromise,
+        fetchSchoolsPromise
+      ]);
 
       const resolvedData = {
         landSize: landSizeData.status === 'verified' ? (landSizeData.value || 'Not available') : 'Not available',
         schools: backendData.schools || [],
+        livability: livabilityData && livabilityData.status === 'verified' ? livabilityData : null,
         landSizeMeta: landSizeData,
         landSizeLogs: landSizeData.attempts || []
       };
@@ -300,9 +313,8 @@ async function fetchPropertyInsights(addressInfo, showLandSize, showSchools) {
       chrome.storage.local.set(cacheData);
 
       removeLoadingIndicator();
-      injectInsightsPanel(resolvedData.landSize, resolvedData.schools, showLandSize, showSchools);
+      injectInsightsPanel(resolvedData.landSize, resolvedData.schools, resolvedData.livability, showLandSize, showSchools, showLivability);
 
-      // If backend was offline and schools requested, show a minor warning but do not crash
       if (showSchools && backendData.error) {
         injectProxyWarning();
       }
@@ -377,7 +389,7 @@ function removeLoadingIndicator() {
   }
 }
 
-function injectInsightsPanel(landSize, schools, showLandSize, showSchools) {
+function injectInsightsPanel(landSize, schools, livability, showLandSize, showSchools, showLivability) {
   // Prevent duplicate injection
   if (document.getElementById('au-insights-schools-section')) return;
 
@@ -389,9 +401,28 @@ function injectInsightsPanel(landSize, schools, showLandSize, showSchools) {
   if (showLandSize && landSize) {
     const sizeDisplay = landSize.toLowerCase().includes('not') ? 'Not available' : landSize;
     landSizeHtml = `
-      <div style="display: flex; align-items: center; justify-content: space-between; padding: 16px 4px; border-bottom: 1px dashed #e2e8f0; font-family: sans-serif;">
+      <div style="display: flex; align-items: center; justify-content: space-between; padding: 14px 4px; border-bottom: 1px dashed #e2e8f0; font-family: sans-serif;">
         <span style="color: #64748b; font-weight: 500; font-size: 13px; display: flex; align-items: center; gap: 6px;">📐 Estimated Land Size</span>
         <span style="color: #1e293b; font-weight: 600; font-size: 14px;">${sizeDisplay}</span>
+      </div>
+    `;
+  }
+
+  let livabilityHtml = '';
+  if (showLivability && livability) {
+    const score = livability.score || 75;
+    const label = livability.label || 'Livable';
+    const scoreColor = score >= 80 ? '#10b981' : score >= 65 ? '#2563eb' : '#f59e0b';
+    
+    livabilityHtml = `
+      <div class="au-insights-livability-box" style="padding: 14px 0; border-bottom: 1px dashed #e2e8f0;">
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+          <span style="color: #64748b; font-weight: 500; font-size: 13px;">🏡 Livability Score (OnTheHouse)</span>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span style="font-size: 12px; font-weight: 600; color: ${scoreColor}; background-color: ${scoreColor}15; padding: 2px 8px; border-radius: 12px;">${label}</span>
+            <span style="font-size: 16px; font-weight: 700; color: ${scoreColor};">${score}/100</span>
+          </div>
+        </div>
       </div>
     `;
   }
@@ -430,8 +461,8 @@ function injectInsightsPanel(landSize, schools, showLandSize, showSchools) {
     });
 
     schoolsHtml = `
-      <div class="au-insights-header" style="border-top: ${landSizeHtml ? 'none' : '1px solid transparent'}; border-bottom: none; margin-top: ${landSizeHtml ? '22px' : '0'}; padding-bottom: 0;">
-        <h3>School Catchment</h3>
+      <div class="au-insights-header" style="border-top: none; border-bottom: none; margin-top: 14px; padding-bottom: 0;">
+        <h3 style="font-size: 12px;">School Catchment</h3>
       </div>
       ${rowsHtml}
     `;
@@ -442,6 +473,7 @@ function injectInsightsPanel(landSize, schools, showLandSize, showSchools) {
       <h3 style="margin: 0; font-size: 14px; font-weight: 700; color: #0f172a;">Property Insights</h3>
     </div>
     ${landSizeHtml}
+    ${livabilityHtml}
     ${schoolsHtml}
   `;
 
@@ -451,7 +483,6 @@ function injectInsightsPanel(landSize, schools, showLandSize, showSchools) {
     const parent = featureGroup.parentElement;
     const parentStyle = window.getComputedStyle(parent);
 
-    // If the parent of the features group is a flex row, insert after the parent to avoid squeeze/overlap
     if (parentStyle.display === 'flex' && parentStyle.flexDirection === 'row') {
       parent.parentNode.insertBefore(container, parent.nextSibling);
     } else {
