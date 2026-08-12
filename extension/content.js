@@ -1,5 +1,5 @@
 // Configuration
-const API_BASE_URL = 'http://localhost:3000'; // Change to your deployed URL (e.g., 'https://my-insights-app.onrender.com')
+const API_BASE_URL = 'https://au-rea-insights.vercel.app'; // Production Vercel deployment URL
 const CACHE_PREFIX = 'insights_cache_v2_';
 const LEGACY_CACHE_PREFIX = 'insights_cache_';
 const INSIGHTS_DEBOUNCE_MS = 800;
