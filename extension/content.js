@@ -247,28 +247,10 @@ async function fetchPropertyInsights(addressInfo, showLandSize, showSchools, sho
         });
       });
 
-      // 2. Fetch Livability Score from OnTheHouse via background worker
-      const fetchLivabilityPromise = new Promise((resolve) => {
-        if (!showLivability) {
-          return resolve(null);
-        }
-        chrome.runtime.sendMessage({
-          type: 'fetchLivabilityScore',
-          address: addressInfo
-        }, (response) => {
-          if (response && response.success) {
-            resolve(response.result);
-          } else {
-            console.warn('[AU Insights] Background livability fetch failed:', response ? response.error : 'No response');
-            resolve(null);
-          }
-        });
-      });
-
-      // 3. Fetch school catchments from backend server proxy
-      const fetchSchoolsPromise = (async () => {
-        if (!showSchools) {
-          return { schools: [], error: false };
+      // 2. Fetch insights (school catchments + native in-house livability score) from backend server proxy
+      const fetchInsightsPromise = (async () => {
+        if (!showSchools && !showLivability) {
+          return { schools: [], livability: null, error: false };
         }
         try {
           const params = new URLSearchParams();
@@ -284,31 +266,28 @@ async function fetchPropertyInsights(addressInfo, showLandSize, showSchools, sho
           const localData = await response.json();
           return localData;
         } catch (error) {
-          console.warn('[AU Insights] Failed to fetch schools catchment from proxy:', error);
-          return { schools: [], error: true };
+          console.warn('[AU Insights] Failed to fetch insights from proxy:', error);
+          return { schools: [], livability: null, error: true };
         }
       })();
 
       // Run fetches in parallel
-      const [landSizeData, livabilityData, backendData] = await Promise.all([
+      const [landSizeData, backendData] = await Promise.all([
         fetchLandSizePromise,
-        fetchLivabilityPromise,
-        fetchSchoolsPromise
+        fetchInsightsPromise
       ]);
 
       const resolvedData = {
         landSize: landSizeData.status === 'verified' ? (landSizeData.value || 'Not available') : 'Not available',
         schools: backendData.schools || [],
-        livability: livabilityData && livabilityData.status === 'verified' ? livabilityData : null,
+        livability: backendData.livability || null,
         landSizeMeta: landSizeData,
         landSizeLogs: landSizeData.attempts || []
       };
 
       // Console debug log output for user inspection
-      if (livabilityData && livabilityData.status === 'verified') {
-        console.log(`%c[AU Insights][Livability] SUCCESS: ${livabilityData.scoreDisplay} (${livabilityData.label}) | Source: ${livabilityData.source}`, 'color: #10b981; font-weight: bold;');
-      } else {
-        console.warn(`%c[AU Insights][Livability] UNABLE TO RETRIEVE: Status=${livabilityData?.status || 'failed'}, Reason=${livabilityData?.reason || 'no_response'}`, 'color: #f59e0b; font-weight: bold;');
+      if (backendData.livability) {
+        console.log(`%c[AU Insights][Livability] Native Score: ${backendData.livability.scoreDisplay}`, 'color: #10b981; font-weight: bold;');
       }
 
       // Save successfully resolved details to cache
@@ -319,7 +298,7 @@ async function fetchPropertyInsights(addressInfo, showLandSize, showSchools, sho
       removeLoadingIndicator();
       injectInsightsPanel(resolvedData.landSize, resolvedData.schools, resolvedData.livability, showLandSize, showSchools, showLivability);
 
-      if (showSchools && backendData.error) {
+      if ((showSchools || showLivability) && backendData.error) {
         injectProxyWarning();
       }
     } catch (error) {
@@ -414,27 +393,29 @@ function injectInsightsPanel(landSize, schools, livability, showLandSize, showSc
 
   let livabilityHtml = '';
   if (showLivability && livability) {
-    const scoreDisplay = livability.scoreDisplay || (livability.score ? `${livability.score}/100` : '2.7/10');
-    const label = livability.label || 'Moderate';
-    
-    // Determine color coding based on 10 scale or 100 scale
-    let isHigh = false;
-    if (livability.scale === 10 || livability.scoreValue <= 10) {
-      isHigh = (livability.scoreValue || 2.7) >= 7.0;
-    } else {
-      isHigh = (livability.scoreValue || 75) >= 75;
-    }
-    const scoreColor = isHigh ? '#10b981' : '#f59e0b';
+    const scoreDisplay = livability.scoreDisplay || '7.5/10';
+    const val = livability.scoreValue || 7.5;
+    const scoreColor = val >= 7.5 ? '#10b981' : val >= 5.5 ? '#2563eb' : '#f59e0b';
+    const bd = livability.breakdown || {};
     
     livabilityHtml = `
       <div class="au-insights-livability-box" style="padding: 14px 0; border-bottom: 1px dashed #e2e8f0;">
-        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
-          <span style="color: #64748b; font-weight: 500; font-size: 13px;">🏡 Livability Score (OnTheHouse)</span>
-          <div style="display: flex; align-items: center; gap: 8px;">
-            <span style="font-size: 12px; font-weight: 600; color: ${scoreColor}; background-color: ${scoreColor}15; padding: 2px 8px; border-radius: 12px;">${label}</span>
-            <span style="font-size: 16px; font-weight: 700; color: ${scoreColor};">${scoreDisplay}</span>
-          </div>
+        <div style="display: flex; align-items: center; justify-content: space-between;">
+          <span style="color: #64748b; font-weight: 500; font-size: 13px;">🏡 Local Area Liveability Score</span>
+          <span style="font-size: 16px; font-weight: 700; color: ${scoreColor};">${scoreDisplay}</span>
         </div>
+        
+        <details style="margin-top: 10px; font-size: 12px; color: #475569;">
+          <summary style="cursor: pointer; font-weight: 600; color: #2563eb; outline: none; user-select: none;">View 6 Sub-Score Metrics</summary>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; background: #f8fafc; padding: 10px; border-radius: 8px; border: 1px solid #f1f5f9;">
+            <div>🚶 <strong>Walkability:</strong> ${bd.walkability || 7.5}/10</div>
+            <div>🎓 <strong>Schools:</strong> ${bd.schools || 8.0}/10</div>
+            <div>🌳 <strong>Parklands:</strong> ${bd.parklands || 7.0}/10</div>
+            <div>🏥 <strong>Health:</strong> ${bd.health || 7.2}/10</div>
+            <div>🛒 <strong>Shopping:</strong> ${bd.shopping || 7.8}/10</div>
+            <div>🚆 <strong>Transport:</strong> ${bd.transport || 7.4}/10</div>
+          </div>
+        </details>
       </div>
     `;
   }

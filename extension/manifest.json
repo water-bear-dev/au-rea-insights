@@ -10,8 +10,7 @@
     "https://*.realestate.com.au/*",
     "https://*.domain.com.au/*",
     "https://*.property.com.au/*",
-    "https://*.allhomes.com.au/*",
-    "https://*.onthehouse.com.au/*"
+    "https://*.allhomes.com.au/*"
   ],
   "background": {
     "service_worker": "background.js"
