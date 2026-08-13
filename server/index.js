@@ -723,22 +723,102 @@ app.get('/health', (req, res) => {
 });
 
 // -------------------------------------------------------------
-// In-House Livability Score Engine
+// OpenStreetMap Overpass Spatial Engine & Liveability Calculation
 // -------------------------------------------------------------
 
-function calculateInHouseLivabilityScore(resolvedAddress, lat, lng, schools) {
-  let seed = 0;
-  const str = `${resolvedAddress.street || ''}${resolvedAddress.suburb || ''}${resolvedAddress.postcode || ''}`.toLowerCase();
-  for (let i = 0; i < str.length; i++) {
-    seed = (seed << 5) - seed + str.charCodeAt(i);
-    seed |= 0;
+const osmCache = {};
+
+async function fetchOsmAmenitiesAroundPoint(lat, lng) {
+  if (!lat || !lng) return null;
+  const key = `${lat.toFixed(3)}_${lng.toFixed(3)}`;
+  if (osmCache[key]) {
+    return osmCache[key];
   }
-  const normHash = (offset, range) => offset + ((Math.abs(seed + offset * 101) % 100) / 100) * range;
 
-  // 1. Walkability (15%) - Road network compactness & footpath connectivity
-  const walkability = Math.round((normHash(6.5, 3.2)) * 10) / 10;
+  // Query OpenStreetMap Overpass API for features within 1.6km (20-min walking radius)
+  const query = `
+    [out:json][timeout:8];
+    (
+      way["highway"~"^(footway|pedestrian|path|steps)$"](around:500,${lat},${lng});
+      nwr["leisure"~"^(park|recreation_ground|garden|nature_reserve)$"](around:1600,${lat},${lng});
+      nwr["amenity"~"^(hospital|clinic|doctors|pharmacy)$"](around:1600,${lat},${lng});
+      nwr["shop"~"^(supermarket|convenience|grocery|chemist)$"](around:1600,${lat},${lng});
+      nwr["railway"~"^(station|halt|tram_stop)$"](around:1600,${lat},${lng});
+      nwr["highway"="bus_stop"](around:1600,${lat},${lng});
+    );
+    out center;
+  `;
 
-  // 2. Schools (25%) - School proximity & ratings from spatial match
+  try {
+    const url = `https://overpass-api.de/api/interpreter?data=${encodeURIComponent(query)}`;
+    const response = await axios.get(url, {
+      headers: { 'User-Agent': 'AU-REA-Insights/1.0' },
+      timeout: 6000
+    });
+
+    if (response.data && Array.isArray(response.data.elements)) {
+      const elements = response.data.elements;
+      const parsed = {
+        footpathCount: 0,
+        parks: [],
+        health: [],
+        shops: [],
+        trainStations: [],
+        tramStops: [],
+        busStops: []
+      };
+
+      for (const el of elements) {
+        const itemLat = el.lat || el.center?.lat;
+        const itemLng = el.lon || el.center?.lon;
+        const tags = el.tags || {};
+        const dist = (itemLat && itemLng) ? calculateDistance(lat, lng, itemLat, itemLng) : 1.0;
+
+        if (tags.highway && ['footway', 'pedestrian', 'path', 'steps'].includes(tags.highway)) {
+          parsed.footpathCount += 1;
+        }
+        if (tags.leisure && ['park', 'recreation_ground', 'garden', 'nature_reserve'].includes(tags.leisure)) {
+          parsed.parks.push({ name: tags.name || 'Park', dist });
+        }
+        if (tags.amenity && ['hospital', 'clinic', 'doctors', 'pharmacy'].includes(tags.amenity)) {
+          parsed.health.push({ type: tags.amenity, name: tags.name, dist });
+        }
+        if (tags.shop && ['supermarket', 'convenience', 'grocery', 'chemist'].includes(tags.shop)) {
+          parsed.shops.push({ type: tags.shop, name: tags.name, dist });
+        }
+        if (tags.railway === 'station' || tags.railway === 'halt') {
+          parsed.trainStations.push({ name: tags.name || 'Train Station', dist });
+        } else if (tags.railway === 'tram_stop') {
+          parsed.tramStops.push({ name: tags.name || 'Tram Stop', dist });
+        } else if (tags.highway === 'bus_stop') {
+          parsed.busStops.push({ name: tags.name || 'Bus Stop', dist });
+        }
+      }
+
+      osmCache[key] = parsed;
+      return parsed;
+    }
+  } catch (e) {
+    console.warn(`[Livability Engine] OSM Overpass spatial query skipped/timed out: ${e.message}`);
+  }
+  return null;
+}
+
+async function calculateInHouseLivabilityScore(resolvedAddress, lat, lng, schools) {
+  const osm = await fetchOsmAmenitiesAroundPoint(lat, lng);
+
+  // Helper distance decay factor (1.0 at 0m, 0.0 at 1600m)
+  const decay = (distKm) => Math.max(0, 1 - (distKm / 1.6));
+
+  // 1. Walkability (15%) - Road network compactness & footpath density
+  let walkability = 7.5;
+  if (osm) {
+    const paths = osm.footpathCount || 0;
+    walkability = Math.min(10, Math.max(4.0, 5.0 + (paths * 0.4)));
+  }
+  walkability = Math.round(walkability * 10) / 10;
+
+  // 2. Schools (25%) - School proximity & rankings from spatial catchment
   let schoolsScore = 7.5;
   if (schools && schools.length > 0) {
     const totalDist = schools.reduce((sum, s) => sum + (s.distance ? parseFloat(s.distance) : 1.5), 0);
@@ -750,18 +830,49 @@ function calculateInHouseLivabilityScore(resolvedAddress, lat, lng, schools) {
   schoolsScore = Math.min(10, Math.max(5.0, schoolsScore));
 
   // 3. Parklands (15%) - Proximity to parks & green space
-  const parklands = Math.round((normHash(7.0, 2.7)) * 10) / 10;
+  let parklands = 7.2;
+  if (osm && osm.parks.length > 0) {
+    const minDist = Math.min(...osm.parks.map(p => p.dist));
+    const countBonus = Math.min(3.0, osm.parks.length * 0.6);
+    parklands = (decay(minDist) * 7.0) + countBonus;
+  }
+  parklands = Math.min(10, Math.max(4.5, Math.round(parklands * 10) / 10));
 
   // 4. Health (15%) - Medical centers & GP access
-  const health = Math.round((normHash(6.8, 2.9)) * 10) / 10;
+  let health = 7.0;
+  if (osm && osm.health.length > 0) {
+    const minDist = Math.min(...osm.health.map(h => h.dist));
+    const countBonus = Math.min(4.0, osm.health.length * 0.8);
+    health = (decay(minDist) * 6.0) + countBonus;
+  }
+  health = Math.min(10, Math.max(4.5, Math.round(health * 10) / 10));
 
   // 5. Shopping (15%) - Supermarket, grocery, & retail strip access
-  const shopping = Math.round((normHash(7.2, 2.5)) * 10) / 10;
+  let shopping = 7.4;
+  if (osm && osm.shops.length > 0) {
+    const minDist = Math.min(...osm.shops.map(s => s.dist));
+    const countBonus = Math.min(4.0, osm.shops.length * 0.8);
+    shopping = (decay(minDist) * 6.0) + countBonus;
+  }
+  shopping = Math.min(10, Math.max(4.5, Math.round(shopping * 10) / 10));
 
   // 6. Public Transport (15%) - Proximity & type (trains > trams > buses)
-  const transport = Math.round((normHash(6.9, 2.8)) * 10) / 10;
+  let transport = 7.2;
+  if (osm) {
+    const nearestTrain = osm.trainStations.length > 0 ? Math.min(...osm.trainStations.map(t => t.dist)) : 5.0;
+    const nearestTram = osm.tramStops.length > 0 ? Math.min(...osm.tramStops.map(t => t.dist)) : 5.0;
+    const busCount = osm.busStops.length;
 
-  // Weighted overall score
+    const trainScore = decay(nearestTrain) * 6.0;
+    const tramScore = decay(nearestTram) * 2.5;
+    const busScore = Math.min(1.5, busCount * 0.2);
+
+    transport = trainScore + tramScore + busScore;
+    if (transport < 4.0) transport = 4.5;
+  }
+  transport = Math.min(10, Math.max(4.5, Math.round(transport * 10) / 10));
+
+  // Weighted overall score calculation
   const weightedOverall = (
     walkability * 0.15 +
     schoolsScore * 0.25 +
